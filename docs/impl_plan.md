@@ -20,9 +20,7 @@
   - [x] ChromaDBのデータディレクトリを除外（必要に応じて）
 - [x] 初期ファイル構造のコミット：`git add .` と `git commit -m "Initial commit"`
 - [x] ブランチ戦略の設定
-  - [x] main：安定バージョン用
-  - [x] develop：開発用メインブランチ
-  - [ ] feature/*：個別機能開発用（必要に応じて作成予定）
+  - [x] main：唯一のブランチとして使用
 - [ ] リモートリポジトリとの連携（オプション）
   - [ ] GitHub/GitLabなどのリポジトリ作成
   - [ ] `git remote add origin <リポジトリURL>`
