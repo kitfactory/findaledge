@@ -7,22 +7,22 @@
 ## ToDo チェックリスト
 
 ### 1. プロジェクト構造の整備 / Project Structure Setup
-- [ ] 必要なディレクトリを作成する：src, examples, tests, docs
-- [ ] pyproject.toml, README.md, README_ja.md, impl_plan.md を配置
+- [x] 必要なディレクトリを作成する：src, examples, tests, docs
+- [x] pyproject.toml, README.md, README_ja.md, impl_plan.md を配置
 
 ### 2. Git管理の設定 / Git Version Control Setup
-- [ ] Gitリポジトリの初期化：`git init`
-- [ ] .gitignoreファイルの作成
-  - [ ] 仮想環境フォルダ（.venv）を除外
-  - [ ] Python生成ファイル（__pycache__、*.pyc、*.pyo）を除外
-  - [ ] ローカル設定ファイル（.env）を除外
-  - [ ] ビルドファイル（dist/、build/）を除外
-  - [ ] ChromaDBのデータディレクトリを除外（必要に応じて）
-- [ ] 初期ファイル構造のコミット：`git add .` と `git commit -m "Initial commit"`
-- [ ] ブランチ戦略の設定
-  - [ ] main：安定バージョン用
-  - [ ] develop：開発用メインブランチ
-  - [ ] feature/*：個別機能開発用
+- [x] Gitリポジトリの初期化：`git init`
+- [x] .gitignoreファイルの作成
+  - [x] 仮想環境フォルダ（.venv）を除外
+  - [x] Python生成ファイル（__pycache__、*.pyc、*.pyo）を除外
+  - [x] ローカル設定ファイル（.env）を除外
+  - [x] ビルドファイル（dist/、build/）を除外
+  - [x] ChromaDBのデータディレクトリを除外（必要に応じて）
+- [x] 初期ファイル構造のコミット：`git add .` と `git commit -m "Initial commit"`
+- [x] ブランチ戦略の設定
+  - [x] main：安定バージョン用
+  - [x] develop：開発用メインブランチ
+  - [ ] feature/*：個別機能開発用（必要に応じて作成予定）
 - [ ] リモートリポジトリとの連携（オプション）
   - [ ] GitHub/GitLabなどのリポジトリ作成
   - [ ] `git remote add origin <リポジトリURL>`
