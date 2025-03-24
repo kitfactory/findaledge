@@ -1,0 +1,37 @@
+FinderLedge サンプルテキストファイル
+===================================
+
+このファイルは、ドキュメントローダーサンプルのテスト用に作成されたサンプルテキストファイルです。
+FinderLedge ライブラリは、様々な文書形式を読み込み、検索可能なインデックスを作成することができます。
+
+主な機能:
+- テキストファイルの読み込み
+- PDFファイルの読み込み
+- ハイブリッド検索 (ベクトル検索 + キーワード検索)
+- インデックスの永続化
+
+このサンプルテキストには、いくつかの日本語のキーワードが含まれています：
+* 検索エンジン
+* 自然言語処理
+* 埋め込みベクトル
+* データベース
+* インデックス作成
+
+FinderLedge Sample Text File
+===================================
+
+This is a sample text file created for testing the document loader sample.
+The FinderLedge library can load various document formats and create searchable indices.
+
+Main features:
+- Loading text files
+- Loading PDF files
+- Hybrid search (vector search + keyword search)
+- Index persistence
+
+This sample text contains some English keywords:
+* search engine
+* natural language processing
+* embedding vectors
+* database
+* indexing

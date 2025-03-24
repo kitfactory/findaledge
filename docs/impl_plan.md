@@ -27,33 +27,39 @@
   - [ ] `git push -u origin main`
 
 ### 3. 必要ライブラリのインストール / Installation of Required Libraries
-- [ ] 仮想環境が有効になっていることを確認 (.venv)
-- [ ] uvコマンドで必要ライブラリをインストール
-  - [ ] `uv add bm25s-j` - 日本語対応BM25検索ライブラリ
-  - [ ] `uv add langchain` - LLM統合フレームワーク
-  - [ ] `uv add langchain-openai` - OpenAIモデル用のLangChainラッパー
-  - [ ] `uv add langchain-community` - コミュニティツール（OllamaなどのEmbeddingモデル用）
-  - [ ] `uv add chromadb` - ベクトルデータベース
-  - [ ] `uv add openai` - OpenAI API クライアント
-  - [ ] `uv add ollama` - ローカルモデル用Ollamaクライアント（オプション）
-  - [ ] `uv add numpy` - 数値計算ライブラリ（RRF実装などで必要）
-  - [ ] `uv add pydantic` - データバリデーション用
-- [ ] 開発モードでパッケージ自身をインストール
-  - [ ] `uv pip install -e .` - 開発者モードでFinderLedgeをインストール
-- [ ] 依存ライブラリが正しくインストールされているか確認
-  - [ ] 各ライブラリのバージョン情報を確認
+- [x] 仮想環境が有効になっていることを確認 (.venv)
+- [x] uvコマンドで必要ライブラリをインストール
+  - [x] `uv add bm25s-j` - 日本語対応BM25検索ライブラリ
+  - [x] `uv add langchain` - LLM統合フレームワーク
+  - [x] `uv add langchain-openai` - OpenAIモデル用のLangChainラッパー
+  - [x] `uv add langchain-community` - コミュニティツール（OllamaなどのEmbeddingモデル用）
+  - [x] `uv add chromadb` - ベクトルデータベース
+  - [x] `uv add openai` - OpenAI API クライアント
+  - [x] `uv add ollama` - ローカルモデル用Ollamaクライアント（オプション）
+  - [x] `uv add numpy` - 数値計算ライブラリ（RRF実装などで必要）
+  - [x] `uv add pydantic` - データバリデーション用
+  - [x] `uv add markitdown` - オフィス文書処理用（DOCX, XLSX, PPTX, PDF）
+- [x] 開発モードでパッケージ自身をインストール
+  - [x] `uv pip install -e .` - 開発者モードでFinderLedgeをインストール
+- [x] 依存ライブラリが正しくインストールされているか確認
+  - [x] 各ライブラリのバージョン情報を確認
 
 ### 4. プロトタイプ作成 / Prototype Development
-- [ ] studyディレクトリを作成し、コア機能の最小限サンプルを実装
-  - [ ] vector_search_sample.py: ChromaDBを使用したベクトル検索の基本サンプル実装
-  - [ ] bm25_sample.py: bm25s-jライブラリを使用したキーワード検索の基本サンプル実装
-  - [ ] embeddings_sample.py: OpenAI APIを使用した埋め込みベクトル生成の基本サンプル実装
-  - [ ] hybrid_search_sample.py: ベクトル検索とBM25検索の結果を融合するRRFアルゴリズムの実装サンプル
-  - [ ] document_loader_sample.py: 様々な形式の文書を読み込み、テキスト抽出するサンプル
-  - [ ] persistence_sample.py: インデックスの保存と読み込みの基本サンプル
-- [ ] サンプルデータセットを用意し、各プロトタイプの動作を検証
-- [ ] 各プロトタイプの実行パフォーマンスを測定し、ベンチマーク結果をまとめる
-- [ ] 得られた知見を基に本実装の設計を調整
+- [x] studyディレクトリを作成し、コア機能の最小限サンプルを実装
+  - [x] vector_search_sample.py: ChromaDBを使用したベクトル検索の基本サンプル実装
+  - [x] bm25_sample.py: bm25s-jライブラリを使用したキーワード検索の基本サンプル実装
+  - [x] embeddings_sample.py: OpenAI APIを使用した埋め込みベクトル生成の基本サンプル実装
+  - [x] hybrid_search_sample.py: ベクトル検索とBM25検索の結果を融合するRRFアルゴリズムの実装サンプル
+  - [x] document_loader_sample.py: 様々な形式の文書を読み込み、テキスト抽出するサンプル
+    - [x] テキスト文書を読み込むサンプル
+    - [x] PDFを読み込むサンプル(With LangChain) 
+    - [x] PDFを読み込むサンプル(With OpenAI response api)
+    - [x] PDFを読み込むサンプル(With gemini api)
+    - [x] オフィス文書を読み込むサンプル(With Markitdown - DOCX, XLSX, PPTX)
+  - [x] persistence_sample.py: インデックスの保存と読み込みの基本サンプル
+- [x] サンプルデータセットを用意し、各プロトタイプの動作を検証
+- [x] 各プロトタイプの実行パフォーマンスを測定し、ベンチマーク結果をまとめる
+- [x] 得られた知見を基に本実装の設計を調整
 
 ### 5. 要件定義の確認と設計ドキュメントの作成 / Requirement Analysis and Design Documentation
 - [ ] docs/request.md の内容を精査して、機能要件と非機能要件を整理する

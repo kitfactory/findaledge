@@ -1,0 +1,14 @@
+{
+  "created_at": 1742729514.230142,
+  "document_count": 5,
+  "document_ids": [
+    "doc0",
+    "doc1",
+    "doc2",
+    "doc3",
+    "doc4"
+  ],
+  "embedding_model": "text-embedding-ada-002",
+  "vector_collection": "hybrid_sample",
+  "has_bm25_index": true
+}
