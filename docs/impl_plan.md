@@ -62,27 +62,28 @@
 - [x] 得られた知見を基に本実装の設計を調整
 
 ### 5. 要件定義の確認と設計ドキュメントの作成 / Requirement Analysis and Design Documentation
-- [ ] docs/request.md の内容を精査して、機能要件と非機能要件を整理する
-- [ ] 要件定義書(requirements.md)、アーキテクチャ設計書(architecture.md)、機能仕様書(function_spec.md)のドラフトをdocsフォルダに作成する
-- [ ] PlantUMLを用いた概念的なクラス図、シーケンス図などを作成する
+- [x] docs/request.md の内容を精査して、機能要件と非機能要件を整理する
+- [x] 要件定義書(requirements.md)、アーキテクチャ設計書(architecture.md)、機能仕様書(function_spec.md)のドラフトをdocsフォルダに作成する
+- [x] PlantUMLを用いた概念的なクラス図、シーケンス図などを作成する
 
 ### 6. コアクラスの実装 / Core Module Implementation
-- [ ] FinderLedge クラスの実装 (src/finderledge/finderledge.py)
-  - [ ] プロパティ: db_name, persist_dir, embedding_model, vector_store, bm25_index, documents を定義
-  - [ ] メソッド: __init__, add_document, remove_document, find_related, get_context, persist, close, as_retriever を実装
-- [ ] Document クラスの実装 (src/finderledge/document.py)
-  - [ ] 文書ID、タイトル、テキスト本文、メタデータ等を保持する
-- [ ] EmbeddingModel インターフェースの定義と、OpenAIやHuggingFaceなどの具体実装のスタブ作成
-- [ ] VectorStore の統合：Chromaなどを用いたベクトルデータベースの操作実装
-- [ ] BM25Index の統合：bm25s-jライブラリを利用したインデックス作成と検索機能の実装
-- [ ] Retriever インターフェースまたはそのラッパークラスの作成
+- [x] Implement Document class
+- [x] Documentクラスの実装
+- [x] Implement EmbeddingModel interface
+- [x] EmbeddingModelインターフェースの実装
+- [x] Implement TextSplitter class
+- [x] TextSplitterクラスの実装
+- [x] Implement DocumentLoader class
+- [x] DocumentLoaderクラスの実装
+- [x] Implement FinderLedge class
+- [x] FinderLedgeクラスの実装
 
 ### 7. 検索機能の実装 / Search Functionality Implementation
-- [ ] ハイブリッド検索機能の実装
-  - [ ] Embedding (ベクトル)検索の実装
-  - [ ] BM25 キーワード検索の実装
-  - [ ] 両結果の統合: Reciprocal Rank Fusion (RRF) や加重平均方式の実装
-- [ ] 検索モード (hybrid, semantic, keyword) の切り替え機能の実装
+- [x] ハイブリッド検索機能の実装
+  - [x] Embedding (ベクトル)検索の実装
+  - [x] BM25 キーワード検索の実装
+  - [x] 両結果の統合: Reciprocal Rank Fusion (RRF) や加重平均方式の実装
+- [x] 検索モード (hybrid, semantic, keyword) の切り替え機能の実装
 
 ### 8. 文書追加・削除機能 / Document Management
 - [ ] add_document メソッドの実装：文書パース、Embedding計算、BM25インデックス更新処理
@@ -98,9 +99,16 @@
 - [ ] コンテキスト (RunContext) 統合のためのラッパー、型指定などの実装
 
 ### 11. テストの作成 / Testing
-- [ ] コア機能のユニットテストを tests フォルダに実装
-- [ ] 検索API、文書追加・削除機能の統合テストを実装
-- [ ] pytest を用いて全テストを実行し、カバレッジを確認
+- [x] Implement Document tests
+- [x] Documentのテスト実装
+- [x] Implement EmbeddingModel tests
+- [x] EmbeddingModelのテスト実装
+- [x] Implement TextSplitter tests
+- [x] TextSplitterクラスのテスト実装
+- [x] Implement DocumentLoader tests
+- [x] DocumentLoaderのテスト実装
+- [x] Implement FinderLedge tests
+- [x] FinderLedgeのテスト実装
 
 ### 12. ドキュメントとコメントの整備 / Documentation and Comments
 - [ ] 全クラスおよびメソッドに対し、英語と日本語のバイリンガルコメントを記述 (docstrings)

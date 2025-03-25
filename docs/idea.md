@@ -232,3 +232,4 @@ answer = qa_chain.run("製品ロードマップの概要は？")
 ### 他のエージェントフレームワークとの統合:
 
 HaystackやLlamaIndexなど他のRAGフレームワークでも、FinderLedgeの検索結果を渡したり、Documentストアとして差し替えることができます。例えばLlamaIndex（旧称GPT Index）では、FinderLedgeから得た文書群をそのままIndexStructに詰め込み、QueryEngineに与えることで同等の検索拡張が可能です。
+

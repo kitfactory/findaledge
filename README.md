@@ -1,91 +1,129 @@
-# FinderLedge 🔍📚
+# Finderledge 🔍
 
-A document context management library for OpenAI Agents SDK. Provides dynamic document context to agents for efficient information retrieval and navigation.
+A document search library using embeddings and BM25 for efficient and accurate document retrieval.
 
-## ✨ Features
+埋め込みとBM25を使用した、効率的で正確な文書検索ライブラリ。
 
-- **📄 Document Import & Auto-Indexing**: Import documents and automatically create searchable indexes
-- **🔍 Hybrid Search**: Combines vector search (semantic similarity) and keyword search (BM25) for optimal results
-- **📁 Directory-wide Database**: Create indexes from entire folders of documents
-- **📑 Multiple Document Formats**: Support for text, PDF, Word, Markdown, and more
-- **🧠 Embedding Similarity**: Semantic search using OpenAI or other embedding models
-- **🔤 High-performance BM25**: Keyword-based search for precise term matching
-- **💾 Persistent Indexing & Caching**: Save and reuse indexes for faster startup
-- **🔌 Simple Search API**: Intuitive interface for document retrieval
-- **🤖 OpenAI Agents SDK Integration**: Use as a tool or context provider for agents
-- **🔧 SDK-Independent Usage**: Can be used standalone or with other frameworks
+## Features ✨
 
-## 🚀 Installation
+- Document management with chunking support
+- Hybrid search using embeddings and BM25
+- Efficient storage and retrieval of document embeddings
+- Configurable tokenization and text processing
+- Easy-to-use API for document search
 
-```bash
-pip install finderledge
-```
+- チャンク分割をサポートした文書管理
+- 埋め込みとBM25を使用したハイブリッド検索
+- 効率的な文書埋め込みの保存と取得
+- 設定可能なトークン化とテキスト処理
+- 使いやすい文書検索API
 
-## 🏁 Quick Start
+## Installation 🚀
 
-```python
-from finderledge import FinderLedge
+### Prerequisites
 
-# Create an instance
-ledge = FinderLedge(db_name="my_documents")
+- Python 3.8 or higher
+- uv (fast Python package installer)
 
-# Add documents
-ledge.add_document("path/to/document.pdf")
-ledge.add_directory("path/to/document_folder")
-
-# Search for related content
-results = ledge.find_related("query text", mode="hybrid")
-
-# Get context for OpenAI Agents SDK
-context = ledge.get_context("query text")
-
-# Release resources when done
-ledge.close()
-```
-
-## 🤖 OpenAI Agents SDK Integration
-
-```python
-from openai import OpenAI
-from finderledge import FinderLedge
-
-# Create a FinderLedge instance
-ledge = FinderLedge(db_name="knowledge_base")
-ledge.add_directory("path/to/documents")
-
-# Register as a tool
-@function_tool
-def search_docs(query: str) -> str:
-    results = ledge.find_related(query)
-    return "\n\n".join([r.page_content for r in results])
-
-# Create an agent with the tool
-client = OpenAI()
-assistant = client.beta.assistants.create(
-    name="Document Assistant",
-    instructions="You help users find information in documents.",
-    model="gpt-4-turbo",
-    tools=[search_docs.openai_schema],
-)
-```
-
-## 💻 Supported Environments
-
-- Python 3.9+
-- Windows/macOS/Linux compatible
-
-## 📜 License
-
-MIT
-
-## 👩‍💻 Development
-
-Setup development environment:
+### Install uv
 
 ```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+### Install Finderledge
+
+```bash
+# Clone the repository
 git clone https://github.com/yourusername/finderledge.git
 cd finderledge
-python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-pip install -e ".[dev]"
+
+# Create and activate virtual environment
+uv venv
+. .venv/bin/activate  # On Windows: .venv\Scripts\activate
+
+# Install the package with development dependencies
+uv pip install -e ".[dev]"
 ```
+
+## Quick Start 🎯
+
+```python
+from finderledge import Document, DocumentStore, EmbeddingStore, EmbeddingModel, Tokenizer, BM25, Finder
+
+# Initialize components
+document_store = DocumentStore("documents")
+embedding_store = EmbeddingStore("embeddings")
+embedding_model = EmbeddingModel()
+tokenizer = Tokenizer()
+bm25 = BM25()
+
+# Create finder
+finder = Finder(
+    document_store=document_store,
+    embedding_store=embedding_store,
+    embedding_model=embedding_model,
+    tokenizer=tokenizer,
+    bm25=bm25
+)
+
+# Add document
+doc = Document(
+    id="doc1",
+    title="Sample Document",
+    content="This is a sample document for testing.",
+    metadata={"author": "John Doe"}
+)
+finder.add_document(doc)
+
+# Search documents
+results = finder.search("sample document", top_k=5)
+for doc, score in results:
+    print(f"Document: {doc.title}, Score: {score}")
+```
+
+## Documentation 📚
+
+For detailed documentation, please visit our [documentation page](https://finderledge.readthedocs.io/).
+
+詳細なドキュメントについては、[ドキュメントページ](https://finderledge.readthedocs.io/)をご覧ください。
+
+## Development 🛠️
+
+### Running Tests
+
+```bash
+pytest
+```
+
+### Code Style
+
+```bash
+# Format code
+black .
+isort .
+
+# Type checking
+mypy .
+
+# Linting
+flake8
+```
+
+## Contributing 🤝
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+貢献を歓迎します！プルリクエストをお気軽に送信してください。
+
+## License 📄
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+このプロジェクトはMITライセンスの下でライセンスされています - 詳細については[LICENSE](LICENSE)ファイルをご覧ください。
+
+## Support 💬
+
+If you have any questions or need help, please open an issue or contact us at support@finderledge.com.
+
+ご質問やお困りの点がございましたら、issueを作成するか、support@finderledge.comまでご連絡ください。
