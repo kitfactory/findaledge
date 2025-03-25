@@ -114,15 +114,15 @@ class DocumentStore:
             if os.path.exists(filepath):
                 os.remove(filepath)
 
-    def list_documents(self) -> List[Document]:
+    def list_documents(self) -> List[str]:
         """
-        List all documents in store
-        ストア内の全文書をリスト表示
+        List all document IDs in store
+        ストア内の全文書IDをリスト表示
 
         Returns:
-            List[Document]: List of documents / 文書のリスト
+            List[str]: List of document IDs / 文書IDのリスト
         """
-        return list(self.documents.values())
+        return list(self.documents.keys())
 
     def search_documents(self, query: str) -> List[Document]:
         """

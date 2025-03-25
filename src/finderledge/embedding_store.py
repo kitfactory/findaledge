@@ -79,6 +79,18 @@ class EmbeddingStore:
             del self.embeddings[doc_id]
         self._remove_embedding_file(doc_id)
 
+    def delete_embedding(self, doc_id: str) -> None:
+        """
+        Delete the embedding for a document
+        文書の埋め込みを削除
+
+        Args:
+            doc_id (str): Document ID
+        """
+        if doc_id in self.embeddings:
+            del self.embeddings[doc_id]
+        self._remove_embedding_file(doc_id)
+
     def _save_embedding(self, doc_id: str, embedding: np.ndarray) -> None:
         """
         Save an embedding to disk

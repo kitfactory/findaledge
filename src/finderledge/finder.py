@@ -7,8 +7,10 @@ This class provides functionality for searching documents using a combination of
 """
 
 from dataclasses import dataclass
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Dict
 import numpy as np
+import os
+import json
 from .document import Document
 from .document_store import DocumentStore
 from .embedding_store import EmbeddingStore
@@ -40,6 +42,7 @@ class Finder:
         document_store (DocumentStore): Store for managing documents
         embedding_store (EmbeddingStore): Store for managing embeddings
         bm25 (BM25): BM25 search engine
+        storage_dir (str): Directory to store persistent data
     """
 
     def __init__(
@@ -48,7 +51,8 @@ class Finder:
         embedding_model: EmbeddingModel,
         document_store: DocumentStore,
         embedding_store: EmbeddingStore,
-        bm25: BM25
+        bm25: BM25,
+        storage_dir: str
     ):
         """
         Initialize the finder
@@ -60,13 +64,41 @@ class Finder:
             document_store (DocumentStore): Store for managing documents
             embedding_store (EmbeddingStore): Store for managing embeddings
             bm25 (BM25): BM25 search engine
+            storage_dir (str): Directory to store persistent data
         """
         self.tokenizer = tokenizer
         self.embedding_model = embedding_model
         self.document_store = document_store
         self.embedding_store = embedding_store
         self.bm25 = bm25
-        self.documents = []
+        self.storage_dir = storage_dir
+        self.document_contents = {}
+
+        # 永続化ディレクトリの作成
+        os.makedirs(storage_dir, exist_ok=True)
+        self.bm25_path = os.path.join(storage_dir, "bm25.json")
+
+        # BM25の状態を読み込む
+        if os.path.exists(self.bm25_path):
+            self.bm25.load(self.bm25_path)
+            # 既存の文書を読み込む（BM25の順序を維持）
+            self.document_contents = {}
+            for doc_id in self.bm25.doc_ids:
+                doc = self.document_store.get_document(doc_id)
+                if doc:
+                    self.document_contents[doc_id] = doc.content
+        else:
+            # 既存の文書を読み込む
+            self.document_contents = {}
+            for doc_id in self.document_store.list_documents():
+                doc = self.document_store.get_document(doc_id)
+                if doc:
+                    self.document_contents[doc_id] = doc.content
+            # BM25の状態が存在しない場合のみ更新
+            documents = list(self.document_contents.values())
+            doc_ids = list(self.document_contents.keys())
+            self.bm25.fit(documents, doc_ids)
+            self.bm25.save(self.bm25_path)
 
     def add_document(self, document: Document) -> None:
         """
@@ -75,29 +107,67 @@ class Finder:
 
         Args:
             document (Document): Document to add
+
+        Raises:
+            ValueError: If document is None or has no content
         """
+        if document is None:
+            raise ValueError("Document cannot be None")
+        if not document.content:
+            raise ValueError("Document content cannot be empty")
+
         # 文書を保存
         self.document_store.add_document(document)
+        self.document_contents[document.id] = document.content
 
         # 埋め込みを生成して保存
         embedding = self.embedding_model.generate_embedding(document.content)
         self.embedding_store.add_embedding(document.id, embedding)
 
-        # 文書を追加してBM25を更新
-        self.documents.append(document.content)
-        if self.tokenizer:
-            tokenized_documents = [self.tokenizer.tokenize(doc) for doc in self.documents]
-            self.bm25.fit(tokenized_documents)
-        else:
-            # トークナイザーがない場合は、単純に空白で分割
-            tokenized_documents = [doc.split() for doc in self.documents]
-            self.bm25.fit(tokenized_documents)
+        # BM25を更新
+        self._update_bm25()
+
+    def remove_document(self, document_id: str) -> None:
+        """
+        Remove a document from the finder
+        文書をfinderから削除
+
+        Args:
+            document_id (str): ID of the document to remove
+
+        Raises:
+            ValueError: If document_id is not found
+        """
+        if document_id not in self.document_contents:
+            raise ValueError(f"Document with ID {document_id} not found")
+
+        # 文書を削除
+        self.document_store.delete_document(document_id)
+        del self.document_contents[document_id]
+
+        # 埋め込みを削除
+        self.embedding_store.delete_embedding(document_id)
+
+        # BM25を更新
+        self._update_bm25()
+
+    def _update_bm25(self) -> None:
+        """
+        Update BM25 model and save its state
+        BM25モデルを更新して状態を保存
+        """
+        # BM25を更新
+        documents = list(self.document_contents.values())
+        doc_ids = list(self.document_contents.keys())
+        self.bm25.fit(documents, doc_ids)
+        # 状態を保存
+        self.bm25.save(self.bm25_path)
 
     def search(
         self,
         query: str,
         search_mode: str = "hybrid",
-        top_k: int = 5
+        top_k: int = 10
     ) -> List[SearchResult]:
         """
         Search for documents using the specified mode
@@ -118,60 +188,70 @@ class Finder:
             return []
 
         if search_mode not in ["hybrid", "semantic", "keyword"]:
-            raise ValueError(f"Invalid search mode: {search_mode}")
+            raise ValueError(f"Unknown search mode: {search_mode}")
 
         # クエリの埋め込みを生成
         query_embedding = self.embedding_model.generate_embedding(query)
 
-        # 文書の埋め込みを取得
-        document_embeddings = []
-        document_ids = []
-        for doc_id in self.document_store.documents.keys():
-            embedding = self.embedding_store.get_embedding(doc_id)
-            if embedding is not None:
-                document_embeddings.append(embedding)
-                document_ids.append(doc_id)
-
-        if not document_embeddings:
+        # 文書IDのリストを取得（BM25の順序を使用）
+        doc_ids = self.bm25.doc_ids
+        if not doc_ids:
             return []
 
-        # コサイン類似度を計算
-        document_embeddings = np.array(document_embeddings)
-        similarities = np.dot(document_embeddings, query_embedding) / (
-            np.linalg.norm(document_embeddings, axis=1) * np.linalg.norm(query_embedding)
-        )
-
-        # BM25スコアを計算
-        if self.tokenizer:
-            tokenized_query = self.tokenizer.tokenize(query)
-        else:
-            tokenized_query = query.split()
-        bm25_scores = self.bm25.get_scores(tokenized_query)
-
-        # 結果を統合
-        results = []
-        for i, doc_id in enumerate(document_ids):
-            document = self.document_store.get_document(doc_id)
-            if document is None:
-                continue
-
+        # 各文書のスコアを計算
+        scores = []
+        for doc_id in doc_ids:
             if search_mode == "hybrid":
-                # ハイブリッド検索：コサイン類似度とBM25スコアを組み合わせる
-                score = 0.5 * similarities[i] + 0.5 * bm25_scores[i]
+                # ハイブリッド検索：セマンティック検索とキーワード検索の結果を組み合わせる
+                semantic_score = self._calculate_semantic_score(query_embedding, doc_id)
+                keyword_score = self.bm25.score(query, doc_id)
+                # Reciprocal Rank Fusion (RRF)を使用してスコアを組み合わせる
+                rrf_k = 60  # RRFのパラメータ
+                rrf_semantic = 1 / (rrf_k + semantic_score)
+                rrf_keyword = 1 / (rrf_k + keyword_score)
+                score = rrf_semantic + rrf_keyword
             elif search_mode == "semantic":
-                # セマンティック検索：コサイン類似度のみを使用
-                score = similarities[i]
+                # セマンティック検索のみ
+                score = self._calculate_semantic_score(query_embedding, doc_id)
             else:  # keyword
-                # キーワード検索：BM25スコアのみを使用
-                score = bm25_scores[i]
+                # キーワード検索のみ
+                score = self.bm25.score(query, doc_id)
 
-            results.append(SearchResult(document=document, score=float(score)))
+            scores.append((doc_id, score))
 
-        # スコアの降順でソート
-        results.sort(key=lambda x: x.score, reverse=True)
+        # スコアでソート（BM25の順序を維持）
+        scores.sort(key=lambda x: (-x[1], doc_ids.index(x[0])))
 
-        # top_k件を返す
-        return results[:top_k]
+        # 上位k件の結果を返す
+        results = []
+        for doc_id, score in scores[:top_k]:
+            document = self.document_store.get_document(doc_id)
+            if document:
+                results.append(SearchResult(document, score))
+
+        return results
+
+    def _calculate_semantic_score(self, query_embedding: np.ndarray, doc_id: str) -> float:
+        """
+        Calculate semantic similarity score
+        セマンティック類似度スコアを計算
+
+        Args:
+            query_embedding (np.ndarray): Query embedding
+            doc_id (str): Document ID
+
+        Returns:
+            float: Semantic similarity score
+        """
+        doc_embedding = self.embedding_store.get_embedding(doc_id)
+        if doc_embedding is None:
+            return 0.0
+
+        # コサイン類似度を計算
+        similarity = np.dot(query_embedding, doc_embedding) / (
+            np.linalg.norm(query_embedding) * np.linalg.norm(doc_embedding)
+        )
+        return float(similarity)
 
     def to_dict(self) -> dict:
         """

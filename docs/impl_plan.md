@@ -86,13 +86,13 @@
 - [x] 検索モード (hybrid, semantic, keyword) の切り替え機能の実装
 
 ### 8. 文書追加・削除機能 / Document Management
-- [ ] add_document メソッドの実装：文書パース、Embedding計算、BM25インデックス更新処理
-- [ ] remove_document メソッドの実装：指定文書の削除とインデックスの差分更新
+- [x] add_document メソッドの実装：文書パース、Embedding計算、BM25インデックス更新処理
+- [x] remove_document メソッドの実装：指定文書の削除とインデックスの差分更新
 
 ### 9. インデックスとキャッシュの永続化 / Index Persistence
-- [ ] persist() メソッドの自動呼び出し実装
-- [ ] vector_store と BM25インデックスのディスク保存機能の実装
-- [ ] ロード機能の実装：既存インデックスの再利用
+- [x] persist() メソッドの自動呼び出し実装
+- [x] vector_store と BM25インデックスのディスク保存機能の実装
+- [x] ロード機能の実装：既存インデックスの再利用
 
 ### 10. OpenAI Agents SDK との連携 / Integration with OpenAI Agents SDK
 - [ ] エージェントのツール関数として利用できるよう、function_tool デコレータを用いた関数の実装例を作成

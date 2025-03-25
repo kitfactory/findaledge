@@ -20,7 +20,7 @@ class Document(BaseModel):
     """
 
     id: str = Field(description="Document ID / 文書ID")
-    title: str = Field(description="Document title / 文書タイトル")
+    title: Optional[str] = Field(default="", description="Document title / 文書タイトル")
     content: str = Field(description="Document content / 文書内容")
     metadata: Dict[str, Any] = Field(default_factory=dict, description="Document metadata / 文書のメタデータ")
     created_at: datetime = Field(default_factory=datetime.now, description="Creation timestamp / 作成日時")

@@ -1,131 +1,145 @@
 """
-BM25 implementation for document ranking
-文書ランキングのためのBM25実装
-
-This module provides a BM25 implementation for ranking documents based on query relevance.
-このモジュールは、クエリの関連性に基づいて文書をランク付けするためのBM25実装を提供します。
+BM25 ranking algorithm implementation
+BM25ランキングアルゴリズムの実装
 """
 
-from typing import List, Dict, Any
-import math
+import os
 import numpy as np
+import json
+from typing import Dict, List, Optional
 
 class BM25:
     """
-    BM25 implementation for document ranking
-    文書ランキングのためのBM25実装
+    BM25 ranking algorithm implementation
+    BM25ランキングアルゴリズムの実装
     """
-
     def __init__(self, k1: float = 1.5, b: float = 0.75):
         """
         Initialize BM25 with parameters
-        パラメータを指定してBM25を初期化
+        BM25をパラメータで初期化
 
         Args:
-            k1 (float): Term frequency saturation parameter / 単語頻度の飽和パラメータ
-            b (float): Length normalization parameter / 長さの正規化パラメータ
+            k1 (float): Term frequency saturation parameter
+            b (float): Length normalization parameter
         """
         self.k1 = k1
         self.b = b
-        self.corpus = []
-        self.doc_freqs = {}
-        self.doc_lens = []
-        self.avg_doc_len = 0
-        self.idf = {}
-        self.initialized = False
+        self.doc_freqs: Dict[str, int] = {}
+        self.doc_count = 0
+        self.avg_doc_len = 0.0
+        self.doc_lens: Dict[str, int] = {}
+        self.term_freqs: Dict[str, Dict[str, int]] = {}
+        self.doc_ids: List[str] = []
 
-    def fit(self, corpus: List[List[str]]) -> None:
+    def fit(self, documents: List[str], doc_ids: Optional[List[str]] = None) -> None:
         """
-        Fit BM25 parameters to the corpus
-        コーパスにBM25パラメータを適合させる
+        Fit the BM25 model to the documents
+        BM25モデルを文書に適合させる
 
         Args:
-            corpus (List[List[str]]): List of tokenized documents / トークン化された文書のリスト
+            documents (List[str]): List of document texts
+            doc_ids (Optional[List[str]]): List of document IDs
         """
-        self.corpus = corpus
-        self.doc_lens = [len(doc) for doc in corpus]
-        self.avg_doc_len = sum(self.doc_lens) / len(corpus) if corpus else 0
+        if doc_ids is None:
+            doc_ids = [str(i) for i in range(len(documents))]
 
-        # Calculate document frequencies
+        # 文書IDの順序を保持
+        self.doc_ids = list(doc_ids)
+
+        # 文書の長さを計算
+        self.doc_lens = {}
+        self.term_freqs = {}
+        for doc_id, doc in zip(doc_ids, documents):
+            terms = doc.split()
+            self.doc_lens[doc_id] = len(terms)
+            for term in terms:
+                if term not in self.term_freqs:
+                    self.term_freqs[term] = {}
+                if doc_id not in self.term_freqs[term]:
+                    self.term_freqs[term][doc_id] = 0
+                self.term_freqs[term][doc_id] += 1
+
+        # 文書頻度を計算
+        self.doc_count = len(documents)
         self.doc_freqs = {}
-        for doc in corpus:
-            for word in set(doc):
-                self.doc_freqs[word] = self.doc_freqs.get(word, 0) + 1
+        for term in self.term_freqs:
+            self.doc_freqs[term] = len(self.term_freqs[term])
 
-        # Calculate IDF
-        num_docs = len(corpus)
-        self.idf = {
-            word: math.log((num_docs - freq + 0.5) / (freq + 0.5) + 1.0)
-            for word, freq in self.doc_freqs.items()
-        }
+        # 平均文書長を計算
+        self.avg_doc_len = np.mean(list(self.doc_lens.values()))
 
-        self.initialized = True
-
-    def get_scores(self, query: List[str]) -> List[float]:
+    def score(self, query: str, doc_id: str) -> float:
         """
-        Calculate BM25 scores for a query
-        クエリに対するBM25スコアを計算
+        Calculate BM25 score for a document
+        文書のBM25スコアを計算
 
         Args:
-            query (List[str]): Tokenized query / トークン化されたクエリ
+            query (str): Search query
+            doc_id (str): Document ID
 
         Returns:
-            List[float]: List of scores for each document / 各文書のスコアリスト
+            float: BM25 score
         """
-        if not self.initialized:
-            return [0.0] * len(self.corpus)
+        score = 0.0
+        query_terms = query.split()
 
-        scores = np.zeros(len(self.corpus))
-        for word in query:
-            if word not in self.idf:
+        for term in query_terms:
+            if term not in self.term_freqs or doc_id not in self.term_freqs[term]:
                 continue
-            idf = self.idf[word]
-            for doc_idx, doc in enumerate(self.corpus):
-                freq = doc.count(word)
-                if freq == 0:
-                    continue
-                numerator = freq * (self.k1 + 1)
-                denominator = freq + self.k1 * (1 - self.b + self.b * self.doc_lens[doc_idx] / self.avg_doc_len)
-                scores[doc_idx] += idf * numerator / denominator
 
-        return scores.tolist()
+            tf = self.term_freqs[term][doc_id]
+            df = self.doc_freqs[term]
+            doc_len = self.doc_lens[doc_id]
 
-    def to_dict(self) -> Dict[str, Any]:
+            # 逆文書頻度（IDF）の計算
+            idf = np.log((self.doc_count - df + 0.5) / (df + 0.5) + 1.0)
+
+            # 正規化された文書頻度（TF）の計算
+            tf_norm = (tf * (self.k1 + 1)) / (tf + self.k1 * (1 - self.b + self.b * doc_len / self.avg_doc_len))
+
+            score += idf * tf_norm
+
+        return score
+
+    def save(self, filepath: str) -> None:
         """
-        Convert BM25 instance to dictionary for serialization
-        シリアライズのためにBM25インスタンスを辞書に変換
+        Save the BM25 model state to a file
+        BM25モデルの状態をファイルに保存
 
-        Returns:
-            Dict[str, Any]: Dictionary representation of BM25 / BM25の辞書表現
+        Args:
+            filepath (str): Path to save the model state
         """
-        return {
+        # ディレクトリが存在しない場合は作成
+        os.makedirs(os.path.dirname(filepath), exist_ok=True)
+
+        state = {
             "k1": self.k1,
             "b": self.b,
-            "corpus": self.corpus,
             "doc_freqs": self.doc_freqs,
-            "doc_lens": self.doc_lens,
+            "doc_count": self.doc_count,
             "avg_doc_len": self.avg_doc_len,
-            "idf": self.idf,
-            "initialized": self.initialized
+            "doc_lens": self.doc_lens,
+            "term_freqs": self.term_freqs,
+            "doc_ids": self.doc_ids
         }
+        with open(filepath, "w", encoding="utf-8") as f:
+            json.dump(state, f, ensure_ascii=False, indent=2)
 
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "BM25":
+    def load(self, filepath: str) -> None:
         """
-        Create BM25 instance from dictionary
-        辞書からBM25インスタンスを作成
+        Load the BM25 model state from a file
+        BM25モデルの状態をファイルから読み込む
 
         Args:
-            data (Dict[str, Any]): Dictionary representation of BM25 / BM25の辞書表現
-
-        Returns:
-            BM25: New BM25 instance / 新しいBM25インスタンス
+            filepath (str): Path to load the model state from
         """
-        instance = cls(k1=data["k1"], b=data["b"])
-        instance.corpus = data["corpus"]
-        instance.doc_freqs = data["doc_freqs"]
-        instance.doc_lens = data["doc_lens"]
-        instance.avg_doc_len = data["avg_doc_len"]
-        instance.idf = data["idf"]
-        instance.initialized = data["initialized"]
-        return instance 
+        with open(filepath, "r", encoding="utf-8") as f:
+            state = json.load(f)
+            self.k1 = state["k1"]
+            self.b = state["b"]
+            self.doc_freqs = state["doc_freqs"]
+            self.doc_count = state["doc_count"]
+            self.avg_doc_len = state["avg_doc_len"]
+            self.doc_lens = state["doc_lens"]
+            self.term_freqs = state["term_freqs"]
+            self.doc_ids = state["doc_ids"] 
