@@ -6,7 +6,7 @@ This module provides a tokenizer implementation for processing text into tokens.
 このモジュールは、テキストをトークンに処理するためのトークナイザー実装を提供します。
 """
 
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Callable
 import re
 import unicodedata
 
@@ -24,10 +24,29 @@ class Tokenizer:
         Args:
             min_length (int): Minimum token length / トークンの最小長
             max_length (int): Maximum token length / トークンの最大長
+
+        Raises:
+            ValueError: If min_length is negative or max_length is less than min_length
         """
+        if min_length < 0:
+            raise ValueError("min_length must be non-negative")
+        if max_length < min_length:
+            raise ValueError("max_length must be greater than or equal to min_length")
+
         self.min_length = min_length
         self.max_length = max_length
         self.stop_words = set()
+        self.filters: List[Callable[[str], str]] = []
+
+    def add_filter(self, filter_func: Callable[[str], str]) -> None:
+        """
+        Add a filter function to be applied to tokens
+        トークンに適用するフィルター関数を追加
+
+        Args:
+            filter_func (Callable[[str], str]): Filter function that takes a token and returns a modified token
+        """
+        self.filters.append(filter_func)
 
     def add_stop_words(self, words: List[str]) -> None:
         """
@@ -85,6 +104,10 @@ class Tokenizer:
             if self.min_length <= len(token) <= self.max_length
             and token not in self.stop_words
         ]
+        
+        # Apply custom filters
+        for filter_func in self.filters:
+            tokens = [filter_func(token) for token in tokens]
         
         return tokens
 

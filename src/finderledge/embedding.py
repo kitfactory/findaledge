@@ -12,7 +12,6 @@ from abc import ABC, abstractmethod
 from typing import List, Optional
 import openai
 from langchain_openai import OpenAIEmbeddings
-from langchain_community.embeddings import HuggingFaceEmbeddings
 
 class EmbeddingModel(ABC):
     """
@@ -67,13 +66,16 @@ class OpenAIEmbeddingModel(EmbeddingModel):
         Args:
             api_key (Optional[str]): OpenAI API key / OpenAI APIキー
             model_name (str): Model name / モデル名
+
+        Raises:
+            ValueError: If no API key is provided / APIキーが提供されない場合
         """
         super().__init__()
+        if not api_key and not openai.api_key:
+            raise ValueError("OpenAI API key is required")
         self.model_name = model_name
         if api_key:
             openai.api_key = api_key
-        elif not openai.api_key:
-            raise ValueError("OpenAI API key is required")
 
     def embed_text(self, text: str) -> List[float]:
         """
@@ -126,93 +128,6 @@ class OpenAIEmbeddingModel(EmbeddingModel):
         """
         Generate embedding for a query text using OpenAI's API
         OpenAIのAPIを使用してクエリテキストの埋め込みを生成
-
-        Args:
-            text (str): Query text / クエリテキスト
-
-        Returns:
-            List[float]: Embedding vector / 埋め込みベクトル
-        """
-        return self.embed_text(text)
-
-class HuggingFaceEmbeddingModel(EmbeddingModel):
-    """
-    HuggingFace's embedding model implementation
-    HuggingFaceの埋め込みモデルの実装
-    """
-    def __init__(self, model_name: str = "sentence-transformers/all-MiniLM-L6-v2") -> None:
-        """
-        Initialize HuggingFace embedding model
-        HuggingFace埋め込みモデルを初期化
-
-        Args:
-            model_name (str): Model name / モデル名
-        """
-        super().__init__()
-        try:
-            import torch
-            from transformers import AutoModel, AutoTokenizer
-            self.device = "cuda" if torch.cuda.is_available() else "cpu"
-            self.model = AutoModel.from_pretrained(model_name).to(self.device)
-            self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        except ImportError as e:
-            raise ImportError("Required packages not found. Please install torch and transformers.") from e
-
-    def embed_text(self, text: str) -> List[float]:
-        """
-        Embed a single text using HuggingFace model
-        HuggingFaceモデルを使用して単一のテキストを埋め込む
-
-        Args:
-            text (str): Text to embed / 埋め込むテキスト
-
-        Returns:
-            List[float]: Embedding vector / 埋め込みベクトル
-        """
-        import torch
-        inputs = self.tokenizer(text, return_tensors="pt", padding=True, truncation=True, max_length=512)
-        inputs = {k: v.to(self.device) for k, v in inputs.items()}
-        with torch.no_grad():
-            outputs = self.model(**inputs)
-        embeddings = outputs.last_hidden_state.mean(dim=1)
-        return embeddings[0].cpu().numpy().tolist()
-
-    def embed_texts(self, texts: List[str]) -> List[List[float]]:
-        """
-        Embed multiple texts using HuggingFace model
-        HuggingFaceモデルを使用して複数のテキストを埋め込む
-
-        Args:
-            texts (List[str]): Texts to embed / 埋め込むテキスト
-
-        Returns:
-            List[List[float]]: List of embedding vectors / 埋め込みベクトルのリスト
-        """
-        import torch
-        inputs = self.tokenizer(texts, return_tensors="pt", padding=True, truncation=True, max_length=512)
-        inputs = {k: v.to(self.device) for k, v in inputs.items()}
-        with torch.no_grad():
-            outputs = self.model(**inputs)
-        embeddings = outputs.last_hidden_state.mean(dim=1)
-        return embeddings.cpu().numpy().tolist()
-
-    def embed_documents(self, texts: List[str]) -> List[List[float]]:
-        """
-        Generate embeddings for a list of documents using HuggingFace's model
-        HuggingFaceのモデルを使用して文書リストの埋め込みを生成
-
-        Args:
-            texts (List[str]): List of text documents / テキスト文書のリスト
-
-        Returns:
-            List[List[float]]: List of embedding vectors / 埋め込みベクトルのリスト
-        """
-        return self.embed_texts(texts)
-
-    def embed_query(self, text: str) -> List[float]:
-        """
-        Generate embedding for a query text using HuggingFace's model
-        HuggingFaceのモデルを使用してクエリテキストの埋め込みを生成
 
         Args:
             text (str): Query text / クエリテキスト

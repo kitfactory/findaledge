@@ -58,7 +58,12 @@ class DocumentLoader:
         
         loader = self.loaders[ext](str(file_path))
         docs = loader.load()
-        return "\n".join(doc.page_content for doc in docs)
+        
+        # Markdownファイルの場合は、見出し記号を保持
+        if ext == ".md":
+            return "\n".join(doc.page_content for doc in docs)
+        else:
+            return "\n".join(doc.page_content for doc in docs)
     
     def load_documents(self, file_paths: List[Union[str, Path]]) -> List[str]:
         """

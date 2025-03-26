@@ -1,23 +1,16 @@
 """
-Text splitting utilities for document processing
-文書処理のためのテキスト分割ユーティリティ
-
-This module provides functionality for splitting text into chunks
-while maintaining context and managing overlap between chunks.
-このモジュールは、文脈を維持しながらテキストをチャンクに分割し、
-チャンク間のオーバーラップを管理する機能を提供します。
+Text splitter for document chunking
+文書チャンキングのためのテキスト分割器
 """
 
 from typing import List, Optional, Callable
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_core.documents import Document
+import re
 
 class TextSplitter:
     """
-    Text splitter for document processing
-    文書処理のためのテキスト分割器
+    Text splitter for document chunking
+    文書チャンキングのためのテキスト分割器
     """
-
     def __init__(
         self,
         chunk_size: int = 1000,
@@ -34,16 +27,17 @@ class TextSplitter:
             chunk_overlap (int): Overlap between chunks / チャンク間の重複
             length_function (Optional[Callable[[str], int]]): Function to measure text length / テキストの長さを測る関数
             separators (Optional[List[str]]): List of separators for splitting / 分割に使用する区切り文字のリスト
+
+        Raises:
+            ValueError: If chunk_overlap is greater than or equal to chunk_size
         """
         if chunk_overlap >= chunk_size:
-            chunk_overlap = chunk_size // 2
+            raise ValueError("chunk_overlap must be less than chunk_size")
 
-        self._splitter = RecursiveCharacterTextSplitter(
-            chunk_size=chunk_size,
-            chunk_overlap=chunk_overlap,
-            length_function=length_function or len,
-            separators=separators or ["\n\n", "\n", " ", ""]
-        )
+        self.chunk_size = chunk_size
+        self.chunk_overlap = chunk_overlap
+        self.length_function = length_function or len
+        self.separators = separators or ["\n\n", "\n", ".", " ", ""]
 
     def split_text(self, text: str) -> List[str]:
         """
@@ -56,7 +50,40 @@ class TextSplitter:
         Returns:
             List[str]: List of text chunks / テキストチャンクのリスト
         """
-        return [doc.page_content for doc in self._splitter.create_documents([text])]
+        if not text:
+            return []
+
+        chunks = []
+        start = 0
+        text_length = self.length_function(text)
+
+        while start < text_length:
+            # チャンクの終了位置を計算
+            end = min(start + self.chunk_size, text_length)
+
+            # 区切り文字で分割位置を探す
+            chunk_end = end
+            for sep in self.separators:
+                if sep:
+                    # 区切り文字の位置を探す
+                    pos = text.rfind(sep, start, end)
+                    if pos != -1:
+                        chunk_end = pos + len(sep)
+                        break
+
+            # チャンクを追加
+            chunk = text[start:chunk_end].strip()
+            if chunk:
+                chunks.append(chunk)
+
+            # 次のチャンクの開始位置を計算
+            start = chunk_end - self.chunk_overlap
+
+            # 無限ループを防ぐ
+            if start >= chunk_end:
+                start = chunk_end
+
+        return chunks
 
     def split_documents(self, documents: List[str]) -> List[str]:
         """
@@ -64,10 +91,12 @@ class TextSplitter:
         複数の文書をチャンクに分割
 
         Args:
-            documents (List[str]): Documents to split / 分割する文書
+            documents (List[str]): List of documents / 文書のリスト
 
         Returns:
             List[str]: List of text chunks / テキストチャンクのリスト
         """
-        docs = [Document(page_content=doc) for doc in documents]
-        return [doc.page_content for doc in self._splitter.split_documents(docs)] 
+        chunks = []
+        for doc in documents:
+            chunks.extend(self.split_text(doc))
+        return chunks 

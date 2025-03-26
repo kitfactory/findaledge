@@ -121,7 +121,7 @@ class Finder:
         self.document_contents[document.id] = document.content
 
         # 埋め込みを生成して保存
-        embedding = self.embedding_model.generate_embedding(document.content)
+        embedding = self.embedding_model.embed_text(document.content)
         self.embedding_store.add_embedding(document.id, embedding)
 
         # BM25を更新
@@ -191,7 +191,7 @@ class Finder:
             raise ValueError(f"Unknown search mode: {search_mode}")
 
         # クエリの埋め込みを生成
-        query_embedding = self.embedding_model.generate_embedding(query)
+        query_embedding = self.embedding_model.embed_text(query)
 
         # 文書IDのリストを取得（BM25の順序を使用）
         doc_ids = self.bm25.doc_ids
@@ -204,7 +204,8 @@ class Finder:
             if search_mode == "hybrid":
                 # ハイブリッド検索：セマンティック検索とキーワード検索の結果を組み合わせる
                 semantic_score = self._calculate_semantic_score(query_embedding, doc_id)
-                keyword_score = self.bm25.score(query, doc_id)
+                tokens = self.tokenizer.tokenize(query)
+                keyword_score = self.bm25.score(tokens, doc_id)
                 # Reciprocal Rank Fusion (RRF)を使用してスコアを組み合わせる
                 rrf_k = 60  # RRFのパラメータ
                 rrf_semantic = 1 / (rrf_k + semantic_score)
@@ -215,7 +216,8 @@ class Finder:
                 score = self._calculate_semantic_score(query_embedding, doc_id)
             else:  # keyword
                 # キーワード検索のみ
-                score = self.bm25.score(query, doc_id)
+                tokens = self.tokenizer.tokenize(query)
+                score = self.bm25.score(tokens, doc_id)
 
             scores.append((doc_id, score))
 

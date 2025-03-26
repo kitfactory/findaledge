@@ -95,8 +95,8 @@
 - [x] ロード機能の実装：既存インデックスの再利用
 
 ### 10. OpenAI Agents SDK との連携 / Integration with OpenAI Agents SDK
-- [ ] エージェントのツール関数として利用できるよう、function_tool デコレータを用いた関数の実装例を作成
-- [ ] コンテキスト (RunContext) 統合のためのラッパー、型指定などの実装
+- [x] エージェントのツール関数として利用できるよう、function_tool デコレータを用いた関数の実装例を作成
+- [x] コンテキスト (RunContext) 統合のためのラッパー、型指定などの実装
 
 ### 11. テストの作成 / Testing
 - [x] Implement Document tests

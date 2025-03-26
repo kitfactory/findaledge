@@ -2,94 +2,45 @@
   "k1": 1.5,
   "b": 0.75,
   "doc_freqs": {
-    "This": 1,
-    "is": 1,
-    "a": 1,
-    "test": 1,
-    "document": 3,
-    "about": 2,
-    "Python": 1,
-    "programming.": 1,
-    "Another": 1,
-    "discussing": 1,
-    "machine": 1,
-    "learning.": 1,
-    "A": 1,
-    "third": 1,
-    "data": 1,
-    "science": 1,
-    "and": 1,
-    "analytics.": 1
+    "o": 3,
+    "d": 3,
+    "e": 3,
+    "g": 2,
+    "t": 3,
+    " ": 3,
+    "T": 1,
+    "h": 3,
+    "c": 3,
+    "P": 1,
+    "i": 3,
+    "y": 2,
+    "a": 3,
+    "b": 2,
+    "m": 3,
+    "u": 3,
+    "r": 3,
+    "s": 3,
+    ".": 3,
+    "n": 3,
+    "p": 1,
+    "l": 2,
+    "A": 2
   },
-  "doc_count": 3,
-  "avg_doc_len": 7.0,
-  "doc_lens": {
-    "doc1": 8,
-    "doc2": 5,
-    "doc3": 8
-  },
-  "term_freqs": {
-    "This": {
-      "doc1": 1
-    },
-    "is": {
-      "doc1": 1
-    },
-    "a": {
-      "doc1": 1
-    },
-    "test": {
-      "doc1": 1
-    },
-    "document": {
-      "doc1": 1,
-      "doc2": 1,
-      "doc3": 1
-    },
-    "about": {
-      "doc1": 1,
-      "doc3": 1
-    },
-    "Python": {
-      "doc1": 1
-    },
-    "programming.": {
-      "doc1": 1
-    },
-    "Another": {
-      "doc2": 1
-    },
-    "discussing": {
-      "doc2": 1
-    },
-    "machine": {
-      "doc2": 1
-    },
-    "learning.": {
-      "doc2": 1
-    },
-    "A": {
-      "doc3": 1
-    },
-    "third": {
-      "doc3": 1
-    },
-    "data": {
-      "doc3": 1
-    },
-    "science": {
-      "doc3": 1
-    },
-    "and": {
-      "doc3": 1
-    },
-    "analytics.": {
-      "doc3": 1
-    }
-  },
+  "doc_lens": [
+    49,
+    45,
+    50
+  ],
+  "avg_doc_len": 48.0,
+  "corpus": [
+    "This is a test document about Python programming.",
+    "Another document discussing machine learning.",
+    "A third document about data science and analytics."
+  ],
   "doc_ids": [
     "doc1",
     "doc2",
     "doc3"
-  ]
+  ],
+  "initialized": true
 }

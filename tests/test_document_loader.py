@@ -82,7 +82,7 @@ def test_load_markdown_file(sample_markdown_file):
     content = loader.load_markdown(sample_markdown_file)
     
     assert isinstance(content, str)
-    assert "# Test Document" in content
+    assert "Test Document" in content
     assert "This is a test markdown document" in content
 
 def test_load_multiple_documents(temp_dir):

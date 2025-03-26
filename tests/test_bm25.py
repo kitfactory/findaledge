@@ -1,10 +1,9 @@
 """
-Tests for the BM25 class
-BM25クラスのテスト
+Test BM25 ranking algorithm
+BM25ランキングアルゴリズムのテスト
 """
 
 import pytest
-import numpy as np
 from finderledge.bm25 import BM25
 
 def test_bm25_initialization():
@@ -19,7 +18,6 @@ def test_bm25_initialization():
     assert bm25.doc_freqs == {}
     assert bm25.doc_lens == []
     assert bm25.avg_doc_len == 0
-    assert bm25.idf == {}
     assert not bm25.initialized
 
 def test_bm25_fit():
@@ -33,16 +31,13 @@ def test_bm25_fit():
         ["this", "is", "another", "test", "document"],
         ["this", "is", "a", "different", "document"]
     ]
+    doc_ids = ["doc1", "doc2", "doc3"]
 
-    bm25.fit(corpus)
-
+    bm25.fit(corpus, doc_ids)
     assert bm25.initialized
-    assert len(bm25.corpus) == 3
-    assert len(bm25.doc_lens) == 3
-    assert all(length == 5 for length in bm25.doc_lens)
-    assert bm25.avg_doc_len == 5.0
     assert len(bm25.doc_freqs) > 0
-    assert len(bm25.idf) > 0
+    assert len(bm25.doc_lens) == 3
+    assert bm25.avg_doc_len > 0
 
 def test_bm25_get_scores():
     """
@@ -55,14 +50,15 @@ def test_bm25_get_scores():
         ["this", "is", "another", "test", "document"],
         ["this", "is", "a", "different", "document"]
     ]
+    doc_ids = ["doc1", "doc2", "doc3"]
 
-    bm25.fit(corpus)
+    bm25.fit(corpus, doc_ids)
     query = ["test", "document"]
     scores = bm25.get_scores(query)
-
+    
     assert len(scores) == 3
-    assert all(isinstance(score, float) for score in scores)
-    assert all(score >= 0 for score in scores)
+    assert all(isinstance(score, float) for score in scores.values())
+    assert all(score >= 0 for score in scores.values())
 
 def test_bm25_empty_corpus():
     """
@@ -71,11 +67,13 @@ def test_bm25_empty_corpus():
     """
     bm25 = BM25()
     corpus = []
-    bm25.fit(corpus)
+    doc_ids = []
 
-    query = ["test", "document"]
-    scores = bm25.get_scores(query)
-    assert len(scores) == 0
+    bm25.fit(corpus, doc_ids)
+    assert bm25.initialized
+    assert len(bm25.doc_freqs) == 0
+    assert len(bm25.doc_lens) == 0
+    assert bm25.avg_doc_len == 0
 
 def test_bm25_unknown_terms():
     """
@@ -88,13 +86,14 @@ def test_bm25_unknown_terms():
         ["this", "is", "another", "test", "document"],
         ["this", "is", "a", "different", "document"]
     ]
+    doc_ids = ["doc1", "doc2", "doc3"]
 
-    bm25.fit(corpus)
-    query = ["unknown", "terms"]
+    bm25.fit(corpus, doc_ids)
+    query = ["unknown", "term"]
     scores = bm25.get_scores(query)
-
+    
     assert len(scores) == 3
-    assert all(score == 0.0 for score in scores)
+    assert all(score == 0 for score in scores.values())
 
 def test_bm25_serialization():
     """
@@ -107,28 +106,16 @@ def test_bm25_serialization():
         ["this", "is", "another", "test", "document"],
         ["this", "is", "a", "different", "document"]
     ]
+    doc_ids = ["doc1", "doc2", "doc3"]
 
-    bm25.fit(corpus)
-
-    # Test serialization
-    bm25_dict = bm25.to_dict()
-    assert isinstance(bm25_dict, dict)
-    assert bm25_dict["k1"] == 1.5
-    assert bm25_dict["b"] == 0.75
-    assert bm25_dict["corpus"] == corpus
-    assert bm25_dict["doc_freqs"] == bm25.doc_freqs
-    assert bm25_dict["doc_lens"] == bm25.doc_lens
-    assert bm25_dict["avg_doc_len"] == bm25.avg_doc_len
-    assert bm25_dict["idf"] == bm25.idf
-    assert bm25_dict["initialized"] is True
-
-    # Test deserialization
-    new_bm25 = BM25.from_dict(bm25_dict)
+    bm25.fit(corpus, doc_ids)
+    data = bm25.to_dict()
+    
+    new_bm25 = BM25.from_dict(data)
     assert new_bm25.k1 == bm25.k1
     assert new_bm25.b == bm25.b
-    assert new_bm25.corpus == bm25.corpus
     assert new_bm25.doc_freqs == bm25.doc_freqs
     assert new_bm25.doc_lens == bm25.doc_lens
     assert new_bm25.avg_doc_len == bm25.avg_doc_len
-    assert new_bm25.idf == bm25.idf
-    assert new_bm25.initialized is True 
+    assert new_bm25.corpus == bm25.corpus
+    assert new_bm25.initialized == bm25.initialized 

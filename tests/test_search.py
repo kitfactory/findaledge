@@ -52,6 +52,19 @@ class MockEmbeddingModel(EmbeddingModel):
         # テスト用の固定サイズの埋め込みを生成
         return np.random.rand(10)
 
+    def embed_text(self, text: str) -> np.ndarray:
+        """
+        Embed the input text
+        入力テキストを埋め込みベクトルに変換
+
+        Args:
+            text (str): Input text
+
+        Returns:
+            np.ndarray: Embedding vector
+        """
+        return self.generate_embedding(text)
+
 @pytest.fixture
 def document_store():
     """Create a document store for testing"""
