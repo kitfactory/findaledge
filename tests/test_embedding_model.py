@@ -1,12 +1,14 @@
 """
-Tests for the EmbeddingModel class
-EmbeddingModelクラスのテスト
+Test embedding model implementation
+埋め込みモデル実装のテスト
+
+This module contains tests for the embedding model implementation.
+このモジュールには埋め込みモデル実装のテストが含まれています。
 """
 
 import pytest
-import numpy as np
-import torch
-from finderledge.embedding_model import EmbeddingModel
+from unittest.mock import patch, MagicMock
+from finderledge.embedding_model import OpenAIEmbeddingModel
 
 @pytest.fixture
 def embedding_model():
@@ -14,92 +16,96 @@ def embedding_model():
     Create a test embedding model
     テスト用の埋め込みモデルを作成
     """
-    return EmbeddingModel(model_name="sentence-transformers/all-MiniLM-L6-v2")
+    return OpenAIEmbeddingModel(model="text-embedding-3-small")
 
 def test_embedding_model_initialization(embedding_model):
     """
     Test embedding model initialization
-    埋め込みモデルの初期化テスト
+    埋め込みモデルの初期化をテスト
     """
-    assert embedding_model.model_name == "sentence-transformers/all-MiniLM-L6-v2"
-    assert isinstance(embedding_model.device, torch.device)
-    assert embedding_model.tokenizer is not None
-    assert embedding_model.model is not None
+    assert embedding_model.model == "text-embedding-3-small"
+    assert embedding_model.client is not None
 
 def test_generate_embedding(embedding_model):
     """
-    Test generating embedding for a single text
-    単一テキストの埋め込み生成テスト
+    Test single text embedding generation
+    単一テキストの埋め込み生成をテスト
     """
-    text = "This is a test document."
-    embedding = embedding_model.generate_embedding(text)
-
-    assert isinstance(embedding, np.ndarray)
-    assert embedding.ndim == 1
-    assert embedding.shape[0] > 0
+    mock_response = MagicMock()
+    mock_response.data = [MagicMock(embedding=[0.1, 0.2, 0.3])]
+    
+    with patch.object(embedding_model.client.embeddings, 'create', return_value=mock_response):
+        embedding = embedding_model.embed_query("test text")
+        assert len(embedding) == 3
+        assert embedding == [0.1, 0.2, 0.3]
 
 def test_generate_embeddings(embedding_model):
     """
-    Test generating embeddings for multiple texts
-    複数テキストの埋め込み生成テスト
+    Test multiple text embeddings generation
+    複数テキストの埋め込み生成をテスト
     """
-    texts = [
-        "This is a test document.",
-        "This is another test document.",
-        "This is a different document."
+    mock_response = MagicMock()
+    mock_response.data = [
+        MagicMock(embedding=[0.1, 0.2, 0.3]),
+        MagicMock(embedding=[0.4, 0.5, 0.6])
     ]
-    embeddings = embedding_model.generate_embeddings(texts)
-
-    assert len(embeddings) == 3
-    assert all(isinstance(embedding, np.ndarray) for embedding in embeddings)
-    assert all(embedding.ndim == 1 for embedding in embeddings)
-    assert all(embedding.shape[0] > 0 for embedding in embeddings)
+    
+    with patch.object(embedding_model.client.embeddings, 'create', return_value=mock_response):
+        embeddings = embedding_model.embed_documents(["text1", "text2"])
+        assert len(embeddings) == 2
+        assert embeddings[0] == [0.1, 0.2, 0.3]
+        assert embeddings[1] == [0.4, 0.5, 0.6]
 
 def test_embedding_model_serialization(embedding_model):
     """
-    Test embedding model serialization and deserialization
-    埋め込みモデルのシリアライズとデシリアライズのテスト
+    Test embedding model serialization
+    埋め込みモデルのシリアライズをテスト
     """
-    # Test serialization
+    # Test to_dict
     model_dict = embedding_model.to_dict()
-    assert isinstance(model_dict, dict)
-    assert model_dict["model_name"] == "sentence-transformers/all-MiniLM-L6-v2"
-    assert isinstance(model_dict["device"], str)
-
-    # Test deserialization
-    new_model = EmbeddingModel.from_dict(model_dict)
-    assert new_model.model_name == embedding_model.model_name
-    assert str(new_model.device) == str(embedding_model.device)
+    assert model_dict["model"] == "text-embedding-3-small"
+    
+    # Test from_dict
+    new_model = OpenAIEmbeddingModel.from_dict(model_dict)
+    assert new_model.model == "text-embedding-3-small"
 
 def test_embedding_model_empty_text(embedding_model):
     """
     Test embedding model with empty text
-    空のテキストを使用した埋め込みモデルのテスト
+    空のテキストでの埋め込みモデルをテスト
     """
-    text = ""
-    embedding = embedding_model.generate_embedding(text)
-    assert isinstance(embedding, np.ndarray)
-    assert embedding.ndim == 1
-    assert embedding.shape[0] > 0
+    mock_response = MagicMock()
+    mock_response.data = [MagicMock(embedding=[0.1, 0.2, 0.3])]
+    
+    with patch.object(embedding_model.client.embeddings, 'create', return_value=mock_response):
+        embedding = embedding_model.embed_query("")
+        assert len(embedding) == 3
+        assert embedding == [0.1, 0.2, 0.3]
 
 def test_embedding_model_long_text(embedding_model):
     """
     Test embedding model with long text
-    長いテキストを使用した埋め込みモデルのテスト
+    長いテキストでの埋め込みモデルをテスト
     """
-    text = "This is a very long text. " * 100
-    embedding = embedding_model.generate_embedding(text)
-    assert isinstance(embedding, np.ndarray)
-    assert embedding.ndim == 1
-    assert embedding.shape[0] > 0
+    long_text = "test " * 1000
+    mock_response = MagicMock()
+    mock_response.data = [MagicMock(embedding=[0.1, 0.2, 0.3])]
+    
+    with patch.object(embedding_model.client.embeddings, 'create', return_value=mock_response):
+        embedding = embedding_model.embed_query(long_text)
+        assert len(embedding) == 3
+        assert embedding == [0.1, 0.2, 0.3]
 
 def test_embedding_model_special_characters(embedding_model):
     """
     Test embedding model with special characters
-    特殊文字を使用した埋め込みモデルのテスト
+    特殊文字での埋め込みモデルをテスト
     """
-    text = "This is a test document with special characters: @#$%^&*"
-    embedding = embedding_model.generate_embedding(text)
-    assert isinstance(embedding, np.ndarray)
-    assert embedding.ndim == 1
-    assert embedding.shape[0] > 0 
+    special_text = "!@#$%^&*()_+{}|:\"<>?`-=[]\\;',./"
+    mock_response = MagicMock()
+    mock_response.data = [MagicMock(embedding=[0.1, 0.2, 0.3])]
+    
+    with patch.object(embedding_model.client.embeddings, 'create', return_value=mock_response):
+        embedding = embedding_model.embed_query(special_text)
+        assert len(embedding) == 3
+        assert embedding == [0.1, 0.2, 0.3] 

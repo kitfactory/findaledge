@@ -17,9 +17,10 @@ import chromadb
 from bm25s import BM25, tokenize
 from pydantic import BaseModel
 import uuid
+import shutil
 
 from .document import Document
-from .embedding import EmbeddingModel
+from .embedding_model import EmbeddingModel, OpenAIEmbeddingModel
 from .text_splitter import TextSplitter
 from .document_loader import DocumentLoader
 
@@ -56,19 +57,19 @@ class FinderLedge:
         self.db_name = db_name
         self.persist_dir = Path(persist_dir)
         self.persist_dir.mkdir(parents=True, exist_ok=True)
+        self.chunk_size = chunk_size
+        self.chunk_overlap = chunk_overlap
 
         # Initialize components
-        self.embedding_model = embedding_model or EmbeddingModel()
-        self.text_splitter = TextSplitter(chunk_size, chunk_overlap)
-        self.document_loader = DocumentLoader()
+        self.embedding_model = embedding_model or OpenAIEmbeddingModel()
+        self.text_splitter = TextSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+        self.document_loader = DocumentLoader(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
 
-        # Initialize storage
-        self.vector_store = chromadb.PersistentClient(
-            path=str(self.persist_dir / "chroma")
-        )
-        self.collection = self.vector_store.get_or_create_collection(
+        # Initialize ChromaDB
+        self.chroma_client = chromadb.PersistentClient(path=str(self.persist_dir))
+        self.collection = self.chroma_client.get_or_create_collection(
             name=db_name,
-            metadata={"hnsw:space": "cosine"}
+            embedding_function=self.embedding_model
         )
         self.bm25_index = BM25([])
         self.documents: Dict[str, Document] = {}
@@ -147,7 +148,7 @@ class FinderLedge:
         chunk_ids = [f"{doc_id}_{i}" for i in range(len(doc.chunks))]
 
         # Remove from vector store
-        self.vector_store.delete(ids=chunk_ids)
+        self.chroma_client.delete(ids=chunk_ids)
 
         # Remove from BM25 index
         tokenized_chunks = [tokenize(chunk) for chunk in doc.chunks]
@@ -187,7 +188,7 @@ class FinderLedge:
         # Get vector search results
         if search_mode in ["hybrid", "vector"]:
             query_embedding = self.embedding_model.embed_query(query)
-            vector_results = self.vector_store.query(
+            vector_results = self.chroma_client.query(
                 query_embeddings=[query_embedding],
                 n_results=k
             )
@@ -296,13 +297,16 @@ class FinderLedge:
 
     def close(self) -> None:
         """
-        Close the FinderLedge instance
-        FinderLedgeインスタンスを閉じる
+        Close the FinderLedge system and clean up resources
+        FinderLedgeシステムを閉じてリソースをクリーンアップ
         """
-        self._persist_state()
-        self.vector_store = None
-        self.bm25_index = None
-        self.documents.clear()
+        # Close ChromaDB client
+        self.chroma_client.close()
+        
+        # Remove ChromaDB directory
+        chroma_dir = self.persist_dir / "chroma"
+        if chroma_dir.exists():
+            shutil.rmtree(chroma_dir)
 
     def get_langchain_retriever(self) -> Any:
         """
@@ -312,5 +316,49 @@ class FinderLedge:
         Returns:
             Any: LangChain retriever interface / LangChainのretrieverインターフェース
         """
-        # TODO: Implement LangChain retriever interface
-        raise NotImplementedError("LangChain retriever interface not implemented yet") 
+        from langchain.retrievers import ChromaRetriever
+
+        class FinderLedgeRetriever(ChromaRetriever):
+            """
+            FinderLedge retriever for LangChain
+            LangChain用のFinderLedgeリトリーバー
+            """
+            def __init__(self, finder: "FinderLedge"):
+                """
+                Initialize retriever
+                リトリーバーを初期化
+
+                Args:
+                    finder (FinderLedge): FinderLedge instance / FinderLedgeインスタンス
+                """
+                self.finder = finder
+
+            def get_relevant_documents(self, query: str) -> List[Any]:
+                """
+                Get relevant documents for a query
+                クエリに関連する文書を取得
+
+                Args:
+                    query (str): Search query / 検索クエリ
+
+                Returns:
+                    List[Any]: List of relevant documents / 関連文書のリスト
+                """
+                # Get related documents
+                related_docs = self.finder.find_related_documents(query)
+
+                # Convert to LangChain documents
+                from langchain.schema import Document
+                return [
+                    Document(
+                        page_content=doc.content,
+                        metadata={
+                            "id": doc.id,
+                            "title": doc.title,
+                            **doc.metadata
+                        }
+                    )
+                    for doc in related_docs
+                ]
+
+        return FinderLedgeRetriever(self) 

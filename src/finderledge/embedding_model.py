@@ -6,89 +6,135 @@ This module provides an embedding model implementation for generating text embed
 このモジュールは、テキストの埋め込みを生成するための埋め込みモデル実装を提供します。
 """
 
-from typing import List, Dict, Any, Optional
+from abc import ABC, abstractmethod
+from typing import List, Dict, Any, Optional, Union
 import numpy as np
-from transformers import AutoTokenizer, AutoModel
-import torch
+from openai import OpenAI
+from chromadb.api.types import EmbeddingFunction, Embeddable
 
-class EmbeddingModel:
+class EmbeddingModel(ABC, EmbeddingFunction):
     """
-    Embedding model for generating text embeddings
-    テキストの埋め込みを生成するための埋め込みモデル
+    Abstract base class for embedding models
+    埋め込みモデルの抽象基底クラス
     """
 
-    def __init__(self, model_name: str = "sentence-transformers/all-MiniLM-L6-v2"):
+    @abstractmethod
+    def embed_documents(self, texts: List[str]) -> List[List[float]]:
         """
-        Initialize embedding model
-        埋め込みモデルを初期化
+        Embed a list of documents
+        文書のリストを埋め込む
 
         Args:
-            model_name (str): Name of the model to use / 使用するモデルの名前
-        """
-        self.model_name = model_name
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.model = AutoModel.from_pretrained(model_name).to(self.device)
-
-    def generate_embedding(self, text: str) -> np.ndarray:
-        """
-        Generate embedding for a text
-        テキストの埋め込みを生成
-
-        Args:
-            text (str): Text to generate embedding for / 埋め込みを生成するテキスト
+            texts (List[str]): List of texts to embed / 埋め込むテキストのリスト
 
         Returns:
-            np.ndarray: Text embedding / テキストの埋め込み
+            List[List[float]]: List of embeddings / 埋め込みのリスト
         """
-        # Tokenize text
-        inputs = self.tokenizer(text, return_tensors="pt", padding=True, truncation=True, max_length=512)
-        inputs = {k: v.to(self.device) for k, v in inputs.items()}
+        pass
 
-        # Generate embedding
-        with torch.no_grad():
-            outputs = self.model(**inputs)
-            embeddings = outputs.last_hidden_state.mean(dim=1)
-            embedding = embeddings[0].cpu().numpy()
-
-        return embedding
-
-    def generate_embeddings(self, texts: List[str]) -> List[np.ndarray]:
+    @abstractmethod
+    def embed_query(self, text: str) -> List[float]:
         """
-        Generate embeddings for multiple texts
-        複数のテキストの埋め込みを生成
+        Embed a query text
+        クエリテキストを埋め込む
 
         Args:
-            texts (List[str]): List of texts to generate embeddings for / 埋め込みを生成するテキストのリスト
+            text (str): Text to embed / 埋め込むテキスト
 
         Returns:
-            List[np.ndarray]: List of text embeddings / テキストの埋め込みのリスト
+            List[float]: Embedding / 埋め込み
         """
-        return [self.generate_embedding(text) for text in texts]
+        pass
+
+    def __call__(self, input: Union[str, List[str]]) -> Union[List[float], List[List[float]]]:
+        """
+        Call the embedding function
+        埋め込み関数を呼び出す
+
+        Args:
+            input (Union[str, List[str]]): Input text or list of texts / 入力テキストまたはテキストのリスト
+
+        Returns:
+            Union[List[float], List[List[float]]]: Embedding or list of embeddings / 埋め込みまたは埋め込みのリスト
+        """
+        if isinstance(input, str):
+            return self.embed_query(input)
+        else:
+            return self.embed_documents(input)
+
+class OpenAIEmbeddingModel(EmbeddingModel):
+    """
+    OpenAI API based embedding model
+    OpenAI APIベースの埋め込みモデル
+    """
+
+    def __init__(self, model: str = "text-embedding-3-small"):
+        """
+        Initialize the model
+        モデルを初期化
+
+        Args:
+            model (str): Name of the OpenAI embedding model / OpenAI埋め込みモデルの名前
+        """
+        self.client = OpenAI()
+        self.model = model
+
+    def embed_documents(self, texts: List[str]) -> List[List[float]]:
+        """
+        Embed a list of documents
+        文書のリストを埋め込む
+
+        Args:
+            texts (List[str]): List of texts to embed / 埋め込むテキストのリスト
+
+        Returns:
+            List[List[float]]: List of embeddings / 埋め込みのリスト
+        """
+        response = self.client.embeddings.create(
+            model=self.model,
+            input=texts
+        )
+        return [data.embedding for data in response.data]
+
+    def embed_query(self, text: str) -> List[float]:
+        """
+        Embed a query text
+        クエリテキストを埋め込む
+
+        Args:
+            text (str): Text to embed / 埋め込むテキスト
+
+        Returns:
+            List[float]: Embedding / 埋め込み
+        """
+        response = self.client.embeddings.create(
+            model=self.model,
+            input=[text]
+        )
+        return response.data[0].embedding
 
     def to_dict(self) -> Dict[str, Any]:
         """
-        Convert embedding model instance to dictionary for serialization
-        シリアライズのために埋め込みモデルインスタンスを辞書に変換
+        Convert the model to a dictionary
+        モデルを辞書に変換
 
         Returns:
-            Dict[str, Any]: Dictionary representation of embedding model / 埋め込みモデルの辞書表現
+            Dict[str, Any]: Dictionary representation of the model / モデルの辞書表現
         """
         return {
-            "model_name": self.model_name,
-            "device": str(self.device)
+            "model": self.model,
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "EmbeddingModel":
+    def from_dict(cls, data: Dict[str, Any]) -> "OpenAIEmbeddingModel":
         """
-        Create embedding model instance from dictionary
-        辞書から埋め込みモデルインスタンスを作成
+        Create a model from a dictionary
+        辞書からモデルを作成
 
         Args:
-            data (Dict[str, Any]): Dictionary representation of embedding model / 埋め込みモデルの辞書表現
+            data (Dict[str, Any]): Dictionary representation of the model / モデルの辞書表現
 
         Returns:
-            EmbeddingModel: New embedding model instance / 新しい埋め込みモデルインスタンス
+            OpenAIEmbeddingModel: Created model / 作成されたモデル
         """
-        return cls(model_name=data["model_name"]) 
+        return cls(model=data["model"]) 
