@@ -3,7 +3,7 @@ BM25 ranking algorithm implementation
 BM25ランキングアルゴリズムの実装
 """
 
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 import json
 import math
 from collections import defaultdict
@@ -204,4 +204,122 @@ class BM25:
         with open(file_path, "r", encoding="utf-8") as f:
             data = json.load(f)
         instance = self.from_dict(data)
-        self.__dict__.update(instance.__dict__) 
+        self.__dict__.update(instance.__dict__)
+
+    def add_document(self, doc_id: str, content: str) -> None:
+        """
+        Add a document to the index
+        インデックスに文書を追加
+
+        Args:
+            doc_id (str): Document ID / 文書ID
+            content (str): Document content / 文書内容
+        """
+        # Tokenize content
+        tokens = content.lower().split()
+
+        # Update document frequencies
+        for token in tokens:
+            if token not in self.doc_freqs:
+                self.doc_freqs[token] = 0
+            self.doc_freqs[token] += 1
+
+        # Update document length
+        self.doc_lens.append(len(tokens))
+
+        # Update term frequencies
+        term_freq = {}
+        for token in tokens:
+            if token not in term_freq:
+                term_freq[token] = 0
+            term_freq[token] += 1
+        self.term_freqs.append(term_freq)
+
+        # Update average document length
+        self.avg_doc_len = sum(self.doc_lens) / len(self.doc_lens)
+
+        # Update IDF
+        for token, freq in self.doc_freqs.items():
+            self.idf[token] = math.log((len(self.doc_lens) - freq + 0.5) / (freq + 0.5) + 1)
+
+    def search(self, query: str, k: int = 5) -> List[Tuple[str, float]]:
+        """
+        Search for documents
+        文書を検索
+
+        Args:
+            query (str): Search query / 検索クエリ
+            k (int): Number of results to return / 返す結果の数
+
+        Returns:
+            List[Tuple[str, float]]: List of (document ID, score) pairs / (文書ID, スコア)のペアのリスト
+        """
+        # Tokenize query
+        query_tokens = query.lower().split()
+
+        # Calculate query term frequencies
+        query_term_freq = {}
+        for token in query_tokens:
+            if token not in query_term_freq:
+                query_term_freq[token] = 0
+            query_term_freq[token] += 1
+
+        # Calculate scores
+        scores = []
+        for i, doc_term_freq in enumerate(self.term_freqs):
+            score = 0
+            for token, freq in query_term_freq.items():
+                if token in doc_term_freq:
+                    score += freq * self.idf[token] * (doc_term_freq[token] * (1.5 + 1) / 
+                            (doc_term_freq[token] + 1.5 * (1 - 0.75 + 0.75 * self.doc_lens[i] / self.avg_doc_len)))
+            scores.append((i, score))
+
+        # Sort by score and return top k
+        scores.sort(key=lambda x: x[1], reverse=True)
+        return [(str(i), score) for i, score in scores[:k]]
+
+    def remove_document(self, doc_id: str) -> None:
+        """
+        Remove a document from the index
+        インデックスから文書を削除
+
+        Args:
+            doc_id (str): Document ID / 文書ID
+        """
+        try:
+            doc_index = int(doc_id)
+            if 0 <= doc_index < len(self.corpus):
+                # Remove document length
+                self.doc_lens.pop(doc_index)
+
+                # Remove term frequencies
+                self.term_freqs.pop(doc_index)
+
+                # Update document frequencies
+                for token, freq in self.term_freqs[doc_index].items():
+                    self.doc_freqs[token] -= 1
+                    if self.doc_freqs[token] == 0:
+                        del self.doc_freqs[token]
+
+                # Update average document length
+                if self.doc_lens:
+                    self.avg_doc_len = sum(self.doc_lens) / len(self.doc_lens)
+
+                # Update IDF
+                for token, freq in self.doc_freqs.items():
+                    self.idf[token] = math.log((len(self.doc_lens) - freq + 0.5) / (freq + 0.5) + 1)
+        except ValueError:
+            pass
+
+    def clear(self) -> None:
+        """
+        Clear the index
+        インデックスをクリア
+        """
+        self.corpus = []
+        self.doc_ids = []
+        self.doc_freqs = defaultdict(int)
+        self.doc_lens = []
+        self.avg_doc_len = 0.0
+        self.term_freqs = []
+        self.idf = {} 

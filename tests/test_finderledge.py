@@ -1,193 +1,195 @@
 """
-Tests for the FinderLedge class
-FinderLedgeクラスのテスト
+Tests for FinderLedge
+FinderLedgeのテスト
 """
 
 import pytest
-import os
-import json
 from pathlib import Path
-from unittest.mock import patch, MagicMock
-from finderledge import FinderLedge, Document, OpenAIEmbeddingModel
+import shutil
+import time
+from finderledge.finderledge import FinderLedge
+from finderledge.document import Document
 
 @pytest.fixture
-def temp_dir(tmp_path):
+def temp_dir():
     """
-    Create a temporary directory for test files
-    テストファイル用の一時ディレクトリを作成
+    Create temporary directory for testing
+    テスト用の一時ディレクトリを作成
     """
-    return tmp_path
+    temp_dir = Path("tests/temp")
+    temp_dir.mkdir(exist_ok=True)
+    yield temp_dir
+    
+    # ChromaDBのファイルを確実にクリーンアップ
+    time.sleep(0.1)  # ファイルのロックを解除するために少し待機
+    try:
+        shutil.rmtree(temp_dir)
+    except PermissionError:
+        # ファイルがロックされている場合は、もう一度試行
+        time.sleep(0.1)
+        shutil.rmtree(temp_dir)
 
-@pytest.fixture
-def mock_embedding_model():
-    """
-    Create a mock embedding model
-    モックの埋め込みモデルを作成
-    """
-    model = MagicMock(spec=OpenAIEmbeddingModel)
-    model.embed_documents.return_value = [[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]]
-    model.embed_query.return_value = [0.1, 0.2, 0.3]
-    return model
-
-@pytest.fixture
-def finderledge(temp_dir, mock_embedding_model):
-    """
-    Create a FinderLedge instance for testing
-    テスト用のFinderLedgeインスタンスを作成
-    """
-    return FinderLedge(
-        db_name="test_db",
-        persist_dir=str(temp_dir),
-        embedding_model=mock_embedding_model
-    )
-
-def test_finderledge_initialization(finderledge):
+def test_finderledge_initialization(temp_dir):
     """
     Test FinderLedge initialization
-    FinderLedgeの初期化をテスト
+    FinderLedgeの初期化テスト
     """
-    assert finderledge.db_name == "test_db"
-    assert finderledge.documents == {}
-    assert finderledge.bm25_index is not None
-
-def test_add_document(finderledge):
-    """
-    Test adding a document
-    文書の追加をテスト
-    """
-    doc = Document(
-        id="test1",
-        title="Test Document",
-        content="This is a test document."
+    finder = FinderLedge(
+        db_name="test_db",
+        persist_dir=temp_dir,
+        embedding_model="text-embedding-3-small",
+        chunk_size=100,
+        chunk_overlap=20
     )
     
-    finderledge.add_document(doc)
-    
-    assert "test1" in finderledge.documents
-    assert finderledge.documents["test1"] == doc
-    assert len(doc.chunks) > 0
-    assert len(doc.chunk_embeddings) > 0
+    assert finder.db_name == "test_db"
+    assert finder.persist_dir == temp_dir
+    assert finder.embedding_model == "text-embedding-3-small"
+    assert finder.chunk_size == 100
+    assert finder.chunk_overlap == 20
+    assert finder.vector_store is not None
+    assert finder.bm25_index is not None
 
-def test_remove_document(finderledge):
+def test_add_document(temp_dir):
     """
-    Test removing a document
-    文書の削除をテスト
+    Test adding document
+    文書追加のテスト
     """
+    finder = FinderLedge(persist_dir=temp_dir)
     doc = Document(
-        id="test1",
+        content="This is a test document.",
         title="Test Document",
-        content="This is a test document."
+        metadata={"source": "test"}
     )
     
-    finderledge.add_document(doc)
-    finderledge.remove_document("test1")
-    
-    assert "test1" not in finderledge.documents
+    finder.add_document(doc)
+    assert len(finder.documents) == 1
+    assert finder.documents[0].content == doc.content
+    assert finder.documents[0].title == doc.title
+    assert finder.documents[0].metadata == doc.metadata
 
-def test_find_related_documents(finderledge):
+def test_remove_document(temp_dir):
+    """
+    Test removing document
+    文書削除のテスト
+    """
+    finder = FinderLedge(persist_dir=temp_dir)
+    doc = Document(
+        content="This is a test document.",
+        title="Test Document"
+    )
+    
+    finder.add_document(doc)
+    assert len(finder.documents) == 1
+    
+    finder.remove_document(doc.id)
+    assert len(finder.documents) == 0
+    
+    with pytest.raises(ValueError):
+        finder.remove_document(doc.id)
+
+def test_find_related_documents(temp_dir):
     """
     Test finding related documents
-    関連文書の検索をテスト
+    関連文書検索のテスト
     """
-    # Add test documents
-    doc1 = Document(
-        id="test1",
-        title="First Document",
-        content="This is the first test document."
-    )
-    doc2 = Document(
-        id="test2",
-        title="Second Document",
-        content="This is the second test document."
-    )
+    finder = FinderLedge(persist_dir=temp_dir)
     
-    finderledge.add_document(doc1)
-    finderledge.add_document(doc2)
+    # テスト文書を追加
+    docs = [
+        Document(content="This is a test document about Python.", title="Python Doc"),
+        Document(content="This is a test document about JavaScript.", title="JS Doc"),
+        Document(content="This is a test document about Java.", title="Java Doc")
+    ]
     
-    # Test different search modes
-    query = "test document"
+    for doc in docs:
+        finder.add_document(doc)
     
-    # Test hybrid search
-    results = finderledge.find_related_documents(query, search_mode="hybrid")
+    # ハイブリッド検索
+    results = finder.find_related_documents("Python programming", search_mode="hybrid")
     assert len(results) > 0
+    assert any("Python" in doc.content for doc in results)
     
-    # Test vector search
-    results = finderledge.find_related_documents(query, search_mode="vector")
+    # ベクトル検索
+    results = finder.find_related_documents("JavaScript development", search_mode="vector")
     assert len(results) > 0
+    assert any("JavaScript" in doc.content for doc in results)
     
-    # Test keyword search
-    results = finderledge.find_related_documents(query, search_mode="keyword")
+    # キーワード検索
+    results = finder.find_related_documents("Java", search_mode="keyword")
     assert len(results) > 0
+    assert any("Java" in doc.content for doc in results)
+    
+    # 無効な検索モード
+    with pytest.raises(ValueError):
+        finder.find_related_documents("test", search_mode="invalid")
 
-def test_get_context(finderledge):
+def test_get_context(temp_dir):
     """
-    Test getting context for a query
-    クエリのコンテキスト取得をテスト
+    Test getting context
+    コンテキスト取得のテスト
     """
-    # Add test documents
-    doc1 = Document(
-        id="test1",
-        title="First Document",
-        content="This is the first test document."
-    )
-    doc2 = Document(
-        id="test2",
-        title="Second Document",
-        content="This is the second test document."
-    )
+    finder = FinderLedge(persist_dir=temp_dir)
     
-    finderledge.add_document(doc1)
-    finderledge.add_document(doc2)
-    
-    query = "test document"
-    context = finderledge.get_context(query)
-    
-    assert isinstance(context, str)
-    assert len(context) > 0
-    assert "test document" in context.lower()
-
-def test_persist_and_load_state(finderledge, temp_dir):
-    """
-    Test persisting and loading state
-    状態の永続化と読み込みをテスト
-    """
-    # Add test document
+    # テスト文書を追加
     doc = Document(
-        id="test1",
-        title="Test Document",
-        content="This is a test document."
+        content="This is a test document about Python programming. Python is a popular programming language.",
+        title="Python Doc"
     )
+    finder.add_document(doc)
     
-    finderledge.add_document(doc)
-    
-    # Persist state
-    finderledge._persist_state()
-    
-    # Create new instance and load state
-    new_finderledge = FinderLedge(
-        db_name="test_db",
-        persist_dir=str(temp_dir),
-        embedding_model=finderledge.embedding_model
+    context = finder.get_context("Python programming")
+    assert isinstance(context, str)
+    assert "Python" in context
+    assert len(context) <= finder.chunk_size
+
+def test_persistence(temp_dir):
+    """
+    Test persistence functionality
+    永続化機能のテスト
+    """
+    # 最初のインスタンス
+    finder1 = FinderLedge(persist_dir=temp_dir)
+    doc = Document(
+        content="This is a test document.",
+        title="Test Document"
     )
-    new_finderledge._load_state()
+    finder1.add_document(doc)
+    finder1.close()
     
-    assert "test1" in new_finderledge.documents
-    assert new_finderledge.documents["test1"].id == doc.id
-    assert new_finderledge.documents["test1"].title == doc.title
-    assert new_finderledge.documents["test1"].content == doc.content
+    # 新しいインスタンス
+    finder2 = FinderLedge(persist_dir=temp_dir)
+    assert len(finder2.documents) == 1
+    assert finder2.documents[0].content == doc.content
+    assert finder2.documents[0].title == doc.title
+    finder2.close()
 
-def test_close(finderledge):
+def test_close(temp_dir):
     """
-    Test closing FinderLedge instance
-    FinderLedgeインスタンスのクローズをテスト
+    Test closing FinderLedge
+    FinderLedgeのクローズテスト
     """
-    finderledge.close()
-    # Add assertions for cleanup if needed
+    finder = FinderLedge(persist_dir=temp_dir)
+    doc = Document(
+        content="This is a test document.",
+        title="Test Document"
+    )
+    finder.add_document(doc)
+    
+    finder.close()
+    
+    with pytest.raises(RuntimeError):
+        finder.add_document(doc)
+    
+    with pytest.raises(RuntimeError):
+        finder.find_related_documents("test")
 
-def test_get_langchain_retriever(finderledge):
+def test_get_langchain_retriever(temp_dir):
     """
     Test getting LangChain retriever
-    LangChainレトリーバーの取得をテスト
+    LangChainリトリーバー取得のテスト
     """
-    with pytest.raises(NotImplementedError):
-        finderledge.get_langchain_retriever() 
+    finder = FinderLedge(persist_dir=temp_dir)
+    retriever = finder.get_langchain_retriever()
+    assert retriever is not None
+    finder.close() 

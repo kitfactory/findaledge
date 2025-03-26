@@ -13,6 +13,7 @@ from datetime import datetime
 from pydantic import BaseModel, Field, field_validator
 import time
 import numpy as np
+import uuid
 
 class Document(BaseModel):
     """
@@ -20,7 +21,7 @@ class Document(BaseModel):
     文書データモデル
     """
 
-    id: str = Field(..., description="Document ID / 文書ID")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="Document ID / 文書ID")
     title: str = Field("", description="Document title / 文書タイトル")
     content: str = Field(..., description="Document content / 文書内容")
     metadata: Dict = Field(default_factory=dict, description="Document metadata / 文書メタデータ")
