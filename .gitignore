@@ -40,15 +40,25 @@ htmlcov/
 .pytest_cache/
 .tox/
 .nox/
+.coverage.*
+.cache
+nosetests.xml
 coverage.xml
 *.cover
 *.py,cover
 .hypothesis/
+.pytest_cache/
+cover/
 
 # Project specific
 documents/
 embeddings/
 *.log
+data/
+tests/data/
+tests/temp/
+*.sqlite3
+*.db
 
 # Local configuration files
 .env.*
