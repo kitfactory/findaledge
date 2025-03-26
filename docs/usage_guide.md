@@ -94,6 +94,48 @@ finder.persist()
 finder.load()
 ```
 
+## document_idの取得方法
+
+### 1. 文書追加時の取得
+```python
+# 文書を追加し、document_idを取得
+document_id = finder.add_document(
+    file_path="path/to/document.txt",
+    title="文書タイトル",
+    metadata={"author": "著者名"}
+)
+print(f"追加された文書のID: {document_id}")
+```
+
+### 2. タイトルからの取得
+```python
+# タイトルから文書を検索し、document_idを取得
+doc = finder.get_document_by_title(title="文書タイトル")
+document_id = doc.id if doc else None
+```
+
+### 3. 検索結果からの取得
+```python
+# 検索を実行し、結果からdocument_idを取得
+results = finder.search(query="検索クエリ")
+for result in results:
+    document_id = result.id
+    print(f"検索結果の文書ID: {document_id}")
+```
+
+### 4. 全文書のIDリスト取得
+```python
+# 全文書を取得し、そのIDリストを作成
+documents = finder.get_all_documents()
+document_ids = [doc.id for doc in documents]
+print(f"全文書のID一覧: {document_ids}")
+```
+
+注意事項：
+- document_idは文書を一意に識別するための重要な情報です
+- 文書の削除や更新時に必要となります
+- 必要に応じてメタデータに保存することをお勧めします
+
 ## 高度な使い方
 
 ### 1. カスタム埋め込みモデルの使用
