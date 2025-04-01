@@ -98,6 +98,11 @@
 - [x] エージェントのツール関数として利用できるよう、function_tool デコレータを用いた関数の実装例を作成
 - [x] コンテキスト (RunContext) 統合のためのラッパー、型指定などの実装
 
+
+
+
+
+
 ### 11. テストの作成 / Testing
 - [x] Implement Document tests
 - [x] Documentのテスト実装
