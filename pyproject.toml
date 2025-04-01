@@ -25,13 +25,14 @@ classifiers = [
 dependencies = [
     "bm25s-j>=0.1.1",
     "langchain>=0.2.17",
+    "langchain-chroma",
     "langchain-community>=0.2.19",
     "langchain-core>=0.2.43",
     "langchain-ollama>=0.3.0",
     "langchain-openai>=0.1.25",
     "langchain-text-splitters>=0.2.4",
     "markitdown>=0.1.1",
-    "numpy>=1.21.0",
+    "numpy>=2.1.0",
     "openai>=1.0.0",
 ]
 
