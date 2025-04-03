@@ -17,90 +17,203 @@ from langchain_community.document_loaders import (
 )
 # from langchain.schema import Document # LangChainのDocumentをインポート
 from langchain.schema import Document as LangchainDocument # エイリアスを使用
+import os
+import markitdown # markitdown をインポート
 
 from .text_splitter import TextSplitter
 # from .document import Document # <-- 削除
 
+# markitdown のクラス名をインポート
+from markitdown import MarkItDown
 
 class DocumentLoader:
     """
-    Uses LangChain document loaders to load documents from various formats.
-    LangChainのドキュメントローダーを使用して、様々な形式からドキュメントをロードします。
+    Loads documents from various file formats using markitdown, pathlib,
+    and direct text reading for code files.
+    markitdown, pathlib, およびコードファイル用の直接テキスト読み込みを使用して、
+    様々な形式からドキュメントをロードします。
 
-    This class acts as a wrapper around various LangChain loaders,
-    providing a unified interface for loading files and directories.
-    このクラスは、様々なLangChainローダーのラッパーとして機能し、
-    ファイルやディレクトリをロードするための統一されたインターフェースを提供します。
+    Provides methods to load single files or recursively load files from directories.
+    単一ファイルのロード、またはディレクトリからの再帰的なファイルロードを提供します。
     """
 
-    def __init__(self):
-        # TextSplitterは不要になる可能性があるため、初期化を削除
-        # If splitting is needed after loading, it should be handled separately.
-        # 必要であれば、ロード後の分割は別途処理する必要があります。
-        pass
+    # markitdownがサポートする可能性のある拡張子 (必要に応じて調整)
+    SUPPORTED_EXTENSIONS = {
+        ".md", ".markdown",
+        ".txt", ".text", # Text files also handled by direct read if needed, but markitdown is fine
+        ".pdf",
+        ".docx",
+        ".pptx",
+        ".xlsx",
+        ".xls",
+        ".csv",
+        ".html", ".htm",
+        ".epub",
+        ".rtf",
+        ".odt",
+        ".ipynb", # Jupyter Notebook
+        ".eml", # Email
+        ".xml",
+        # ".json", # JSONは構造によるため、markitdownで適切に処理できるか注意 -> CODE_EXTENSIONS で処理
+        # 画像 (.jpg, .png) や音声 (.wav, .mp3) はテキスト抽出として扱われる
+    }
 
-    def load_file(self, file_path: Union[str, Path], encoding: str = "utf-8", **loader_kwargs: Any) -> List[LangchainDocument]:
+    # プログラミング言語ファイルの拡張子
+    CODE_EXTENSIONS = {
+        ".py", ".pyw", # Python
+        ".java", ".scala", ".kt", # JVM Languages
+        ".js", ".jsx", ".ts", ".tsx", # JavaScript/TypeScript
+        ".c", ".h", ".cpp", ".hpp", ".cs", # C/C++/C#
+        ".go", # Go
+        ".rs", # Rust
+        ".php", # PHP
+        ".rb", # Ruby
+        ".swift", # Swift
+        ".pl", # Perl
+        ".sh", # Shell script
+        ".bat", ".cmd", # Windows Batch
+        ".ps1", # PowerShell
+        ".sql", # SQL
+        ".yaml", ".yml", # YAML
+        ".json", # JSONもテキストとして読む
+        ".dockerfile", "Dockerfile", # Dockerfile (拡張子なしの場合も)
+        ".gitignore", ".gitattributes", # Git files
+        # 必要に応じて他の拡張子を追加
+    }
+
+    def __init__(self):
+        # MarkItDownのインスタンスを作成・保持
+        self.md_converter = MarkItDown()
+
+    def _load_single_file(self, file_path: Path) -> Optional[LangchainDocument]:
         """
-        Load a single file using the appropriate LangChain loader.
-        適切なLangChainローダーを使用して単一ファイルをロードします。
+        Loads a single file, handling code files as text and others via markitdown.
+        単一ファイルをロードします。コードファイルはテキストとして、
+        その他は markitdown 経由で処理します。
+
+        Args:
+            file_path (Path): Path to the file. / ファイルへのパス。
+
+        Returns:
+            Optional[LangchainDocument]: Loaded document or None if loading failed or skipped.
+                                        ロードされたドキュメント、失敗またはスキップされた場合はNone。
+        """
+        file_suffix = file_path.suffix.lower()
+        # Handle files without extension (like Dockerfile) by checking name
+        file_name = file_path.name
+
+        metadata = {"source": str(file_path)}
+
+        # 1. Check for Code Files (including extensionless common names)
+        if file_suffix in self.CODE_EXTENSIONS or file_name in self.CODE_EXTENSIONS:
+            try:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    content = f.read()
+                return LangchainDocument(page_content=content, metadata=metadata)
+            except Exception as e:
+                print(f"Error reading code file {file_path} as text: {e}")
+                return None # Or try other encodings if needed
+
+        # 2. Check for Markitdown Supported Files
+        elif file_suffix in self.SUPPORTED_EXTENSIONS:
+            try:
+                # MarkItDownインスタンスの convert メソッドを使用
+                result = self.md_converter.convert(str(file_path))
+                markdown_content = result.text_content
+                # result.metadata から他のメタデータを取得して追加することも可能
+                # metadata.update(result.metadata)
+                return LangchainDocument(page_content=markdown_content, metadata=metadata)
+            except Exception as e:
+                print(f"Error loading file {file_path} with markitdown: {e}")
+                return None
+
+        # 3. Unsupported File Type
+        else:
+            print(f"Skipping unsupported file type: {file_path}")
+            return None
+
+    def load_file(self, file_path: Union[str, Path]) -> Optional[LangchainDocument]:
+        """
+        Load a single file.
+        単一ファイルをロードします。
 
         Args:
             file_path (Union[str, Path]): Path to the file. / ファイルへのパス。
-            encoding (str): File encoding. Defaults to "utf-8". / ファイルエンコーディング。デフォルトは"utf-8"。
-            **loader_kwargs: Additional arguments passed to the specific LangChain loader.
-                             特定のLangChainローダーに渡される追加の引数。
 
         Returns:
-            List[LangchainDocument]: A list of LangChain Document objects.
-                                    LangChainのDocumentオブジェクトのリスト。
-
+            Optional[LangchainDocument]: Loaded document or None if loading failed.
+                                        ロードされたドキュメント、または失敗した場合はNone。
         Raises:
-            ValueError: If the file type is not supported.
-                        ファイルタイプがサポートされていない場合。
-            FileNotFoundError: If the file does not exist.
-                               ファイルが存在しない場合。
+            FileNotFoundError: If the file does not exist or is not a file.
+                               ファイルが存在しないか、ファイルでない場合。
         """
-        file_path = Path(file_path)
-        if not file_path.is_file():
-            raise FileNotFoundError(f"File not found or is not a file: {file_path}")
+        path = Path(file_path)
+        if not path.is_file():
+            raise FileNotFoundError(f"File not found or is not a file: {path}")
+        return self._load_single_file(path)
 
-        suffix = file_path.suffix.lower()
+    def load_from_directory(
+        self,
+        directory_path: Union[str, Path],
+        glob_pattern: str = "**/*", # デフォルトはサブディレクトリを含む全ファイル
+        recursive: bool = True,
+    ) -> List[LangchainDocument]:
+        """
+        Load documents from a directory, optionally recursively.
+        ディレクトリからドキュメントをロードします（オプションで再帰的に）。
 
-        if suffix == ".txt":
-            loader = TextLoader(str(file_path), encoding=encoding, **loader_kwargs)
-        elif suffix == ".pdf":
-            loader = PyPDFLoader(str(file_path), **loader_kwargs)
-        elif suffix == ".md":
-            loader = UnstructuredMarkdownLoader(str(file_path), mode="elements", **loader_kwargs)
-        # elif suffix == ".json":
-            # from langchain_community.document_loaders import JSONLoader # 必要に応じてインポート
-            # # JSONLoaderには特定の構造が必要な場合があるため、jq_schemaやjson_linesなどを指定
-            # # 例: jq_schema='.[]' など
-            # loader = JSONLoader(str(file_path), jq_schema='.', **loader_kwargs)
-        # 他のファイル形式（CSV, HTMLなど）のサポートを追加可能
-        else:
-            # デフォルトとしてTextLoaderを試みるか、エラーを発生させる
-            try:
-                loader = TextLoader(str(file_path), encoding=encoding, **loader_kwargs)
-                print(f"Warning: Unsupported file type '{suffix}'. Attempting to load as text.")
-            except Exception as e:
-                 raise ValueError(f"Unsupported file type: {suffix}. Error: {e}")
+        Args:
+            directory_path (Union[str, Path]): Path to the directory. / ディレクトリへのパス。
+            glob_pattern (str): Glob pattern to match files within the directory.
+                                Supports '**/' for recursive matching if recursive=True.
+                                Defaults to "**/*" (all files recursively).
+                                ディレクトリ内のファイルに一致するglobパターン。
+                                recursive=Trueの場合、再帰マッチングのために'**/'をサポートします。
+                                デフォルトは "**/*" （再帰的にすべてのファイル）。
+            recursive (bool): Whether to search directories recursively.
+                              If False, glob_pattern should not contain '**'.
+                              Defaults to True.
+                              ディレクトリを再帰的に検索するかどうか。
+                              Falseの場合、glob_patternは'**'を含むべきではありません。
+                              デフォルトはTrue。
 
-        return loader.load()
+        Returns:
+            List[LangchainDocument]: A list of loaded LangChain Document objects.
+                                    ロードされたLangChain Documentオブジェクトのリスト。
+        Raises:
+            FileNotFoundError: If the directory does not exist or is not a directory.
+                               ディレクトリが存在しないか、ディレクトリでない場合。
+            ValueError: If recursive=False and glob_pattern contains '**'.
+                        recursive=Falseでglob_patternが'**'を含む場合。
+        """
+        dir_path = Path(directory_path)
+        if not dir_path.is_dir():
+            raise FileNotFoundError(f"Directory not found or is not a directory: {dir_path}")
 
-    # load_directory, load_text, load_markdown, load_document, load_documents, load_json は
-    # load_file を使用するように変更するか、LangChainのDirectoryLoaderなどを使用するように書き換える必要があります。
-    # 現状のコードは独自実装とLangChainが混在しているため、一旦コメントアウトまたは削除を推奨します。
+        if not recursive and "**" in glob_pattern:
+             raise ValueError("Cannot use '**' in glob_pattern when recursive is False.")
 
-    # def load_directory(...) -> List[LangchainDocument]: # シグネチャ変更
-    #     ...
+        if recursive and not glob_pattern.startswith("**"):
+             # Ensure recursive glob starts correctly if recursive is True
+             # and user provided something like "*.md"
+             if "/" not in glob_pattern and "\\" not in glob_pattern:
+                 glob_pattern = f"**/{glob_pattern}"
 
-    # def load_text(...) -> List[LangchainDocument]: # シグネチャ変更
-    #     doc = Document(page_content=..., metadata={...}) # LangchainDocumentを使う
-    #     ...
+        documents: List[LangchainDocument] = []
+        file_iterator = dir_path.rglob(glob_pattern) if recursive else dir_path.glob(glob_pattern)
 
-    # ... 他のメソッドも同様に修正 ...
-    
+        for file_path in file_iterator:
+            if file_path.is_file():
+                loaded_doc = self._load_single_file(file_path)
+                if loaded_doc:
+                    documents.append(loaded_doc)
+
+        return documents
+
+    # --- 古いメソッド (load_json, load_markdown) は削除 ---
+    # 必要であれば、load_file や load_from_directory を使って再実装するか、
+    # 専用のローダーを別途用意する。
+
     def load_json(self, file_path: Union[str, Path]) -> Dict[str, Any]:
         """
         Load a JSON document
