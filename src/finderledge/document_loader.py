@@ -10,159 +10,96 @@ from langchain_community.document_loaders import (
     TextLoader,
     PyPDFLoader,
     UnstructuredMarkdownLoader,
+    # LangChainのDocumentLoaderを使う場合は以下を追加
+    # DirectoryLoader, # 必要に応じて
+    # JSONLoader,    # 必要に応じて
+    # CSVLoader,     # 必要に応じて
 )
+# from langchain.schema import Document # LangChainのDocumentをインポート
+from langchain.schema import Document as LangchainDocument # エイリアスを使用
+
 from .text_splitter import TextSplitter
-from .document import Document
+# from .document import Document # <-- 削除
+
 
 class DocumentLoader:
     """
-    Document loader class
-    文書ローダークラス
+    Uses LangChain document loaders to load documents from various formats.
+    LangChainのドキュメントローダーを使用して、様々な形式からドキュメントをロードします。
+
+    This class acts as a wrapper around various LangChain loaders,
+    providing a unified interface for loading files and directories.
+    このクラスは、様々なLangChainローダーのラッパーとして機能し、
+    ファイルやディレクトリをロードするための統一されたインターフェースを提供します。
     """
-    def __init__(self, chunk_size: int = 1000, chunk_overlap: int = 200):
+
+    def __init__(self):
+        # TextSplitterは不要になる可能性があるため、初期化を削除
+        # If splitting is needed after loading, it should be handled separately.
+        # 必要であれば、ロード後の分割は別途処理する必要があります。
+        pass
+
+    def load_file(self, file_path: Union[str, Path], encoding: str = "utf-8", **loader_kwargs: Any) -> List[LangchainDocument]:
         """
-        Initialize document loader
-        文書ローダーを初期化
+        Load a single file using the appropriate LangChain loader.
+        適切なLangChainローダーを使用して単一ファイルをロードします。
 
         Args:
-            chunk_size (int): Size of text chunks / テキストチャンクのサイズ
-            chunk_overlap (int): Overlap between chunks / チャンク間のオーバーラップ
-        """
-        self.text_splitter = TextSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
-
-    def load_file(self, file_path: Union[str, Path]) -> str:
-        """
-        Load a file
-        ファイルを読み込む
-
-        Args:
-            file_path (Union[str, Path]): Path to file / ファイルパス
+            file_path (Union[str, Path]): Path to the file. / ファイルへのパス。
+            encoding (str): File encoding. Defaults to "utf-8". / ファイルエンコーディング。デフォルトは"utf-8"。
+            **loader_kwargs: Additional arguments passed to the specific LangChain loader.
+                             特定のLangChainローダーに渡される追加の引数。
 
         Returns:
-            str: File content / ファイル内容
+            List[LangchainDocument]: A list of LangChain Document objects.
+                                    LangChainのDocumentオブジェクトのリスト。
+
+        Raises:
+            ValueError: If the file type is not supported.
+                        ファイルタイプがサポートされていない場合。
+            FileNotFoundError: If the file does not exist.
+                               ファイルが存在しない場合。
         """
         file_path = Path(file_path)
-        if not file_path.exists():
-            raise FileNotFoundError(f"File not found: {file_path}")
+        if not file_path.is_file():
+            raise FileNotFoundError(f"File not found or is not a file: {file_path}")
 
-        if file_path.suffix == ".txt":
-            return self.load_text(file_path)
-        elif file_path.suffix == ".md":
-            return self.load_markdown(file_path)
+        suffix = file_path.suffix.lower()
+
+        if suffix == ".txt":
+            loader = TextLoader(str(file_path), encoding=encoding, **loader_kwargs)
+        elif suffix == ".pdf":
+            loader = PyPDFLoader(str(file_path), **loader_kwargs)
+        elif suffix == ".md":
+            loader = UnstructuredMarkdownLoader(str(file_path), mode="elements", **loader_kwargs)
+        # elif suffix == ".json":
+            # from langchain_community.document_loaders import JSONLoader # 必要に応じてインポート
+            # # JSONLoaderには特定の構造が必要な場合があるため、jq_schemaやjson_linesなどを指定
+            # # 例: jq_schema='.[]' など
+            # loader = JSONLoader(str(file_path), jq_schema='.', **loader_kwargs)
+        # 他のファイル形式（CSV, HTMLなど）のサポートを追加可能
         else:
-            raise ValueError(f"Unsupported file type: {file_path.suffix}")
-
-    def load_directory(self, directory: Union[str, Path], file_filter: Optional[Callable[[Path], bool]] = None) -> List[str]:
-        """
-        Load all files in a directory
-        ディレクトリ内の全ファイルを読み込む
-
-        Args:
-            directory (Union[str, Path]): Directory path / ディレクトリパス
-            file_filter (Optional[Callable[[Path], bool]]): File filter function / ファイルフィルター関数
-
-        Returns:
-            List[str]: List of file contents / ファイル内容のリスト
-        """
-        directory = Path(directory)
-        if not directory.exists():
-            raise FileNotFoundError(f"Directory not found: {directory}")
-
-        contents = []
-        for file_path in directory.glob("**/*"):
-            if file_path.is_file() and (file_filter is None or file_filter(file_path)):
-                try:
-                    content = self.load_file(file_path)
-                    contents.append(content)
-                except ValueError:
-                    continue
-
-        return contents
-
-    def load_text(self, file_path: Union[str, Path], metadata: Optional[Dict[str, Any]] = None) -> str:
-        """
-        Load a text file
-        テキストファイルを読み込む
-
-        Args:
-            file_path (Union[str, Path]): Path to text file / テキストファイルパス
-            metadata (Optional[Dict[str, Any]]): Document metadata / 文書メタデータ
-
-        Returns:
-            str: Text content / テキスト内容
-        """
-        file_path = Path(file_path)
-        if not file_path.exists():
-            raise FileNotFoundError(f"File not found: {file_path}")
-
-        with open(file_path, "r", encoding="utf-8") as f:
-            content = f.read()
-
-        return content
-
-    def load_markdown(self, file_path: Union[str, Path], metadata: Optional[Dict[str, Any]] = None) -> str:
-        """
-        Load a Markdown file
-        Markdownファイルを読み込む
-
-        Args:
-            file_path (Union[str, Path]): Path to Markdown file / Markdownファイルパス
-            metadata (Optional[Dict[str, Any]]): Document metadata / 文書メタデータ
-
-        Returns:
-            str: Markdown content / Markdown内容
-        """
-        file_path = Path(file_path)
-        if not file_path.exists():
-            raise FileNotFoundError(f"File not found: {file_path}")
-
-        with open(file_path, "r", encoding="utf-8") as f:
-            content = f.read()
-
-        return content
-
-    def load_document(self, file_path: Union[str, Path], metadata: Optional[Dict[str, Any]] = None) -> str:
-        """
-        Load a document
-        文書を読み込む
-
-        Args:
-            file_path (Union[str, Path]): Path to document / 文書パス
-            metadata (Optional[Dict[str, Any]]): Document metadata / 文書メタデータ
-
-        Returns:
-            str: Document content / 文書内容
-        """
-        file_path = Path(file_path)
-        if not file_path.exists():
-            raise FileNotFoundError(f"File not found: {file_path}")
-
-        with open(file_path, "r", encoding="utf-8") as f:
-            content = f.read()
-
-        return content
-
-    def load_documents(self, file_paths: List[Union[str, Path]], metadata: Optional[Dict[str, Any]] = None) -> List[str]:
-        """
-        Load multiple documents
-        複数の文書を読み込む
-
-        Args:
-            file_paths (List[Union[str, Path]]): List of file paths / ファイルパスのリスト
-            metadata (Optional[Dict[str, Any]]): Document metadata / 文書メタデータ
-
-        Returns:
-            List[str]: List of document contents / 文書内容のリスト
-        """
-        contents = []
-        for file_path in file_paths:
+            # デフォルトとしてTextLoaderを試みるか、エラーを発生させる
             try:
-                content = self.load_document(file_path, metadata)
-                contents.append(content)
-            except (FileNotFoundError, ValueError):
-                continue
+                loader = TextLoader(str(file_path), encoding=encoding, **loader_kwargs)
+                print(f"Warning: Unsupported file type '{suffix}'. Attempting to load as text.")
+            except Exception as e:
+                 raise ValueError(f"Unsupported file type: {suffix}. Error: {e}")
 
-        return contents
+        return loader.load()
+
+    # load_directory, load_text, load_markdown, load_document, load_documents, load_json は
+    # load_file を使用するように変更するか、LangChainのDirectoryLoaderなどを使用するように書き換える必要があります。
+    # 現状のコードは独自実装とLangChainが混在しているため、一旦コメントアウトまたは削除を推奨します。
+
+    # def load_directory(...) -> List[LangchainDocument]: # シグネチャ変更
+    #     ...
+
+    # def load_text(...) -> List[LangchainDocument]: # シグネチャ変更
+    #     doc = Document(page_content=..., metadata={...}) # LangchainDocumentを使う
+    #     ...
+
+    # ... 他のメソッドも同様に修正 ...
     
     def load_json(self, file_path: Union[str, Path]) -> Dict[str, Any]:
         """
@@ -207,4 +144,4 @@ class DocumentLoader:
             FileNotFoundError: If the file does not exist
                              ファイルが存在しない場合
         """
-        return self.load_document(file_path) 
+        return self.load_file(file_path)[0].page_content 

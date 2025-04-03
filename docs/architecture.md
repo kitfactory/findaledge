@@ -47,7 +47,7 @@ package "Domain Layer" {
 }
 
 package "Infrastructure Layer" {
-    [Vector Store]
+    [Vector Document Store]
     [BM25 Index]
     [File System]
     [Embedding Service]
@@ -62,15 +62,15 @@ package "Infrastructure Layer" {
 [Search Service] --> [Search Model]
 [Index Manager] --> [Index Model]
 
-[Document Model] --> [Vector Store]
+[Document Model] --> [Vector Document Store]
 [Document Model] --> [BM25 Index]
 [Document Model] --> [File System]
 [Document Model] --> [Embedding Service]
 
-[Index Model] --> [Vector Store]
+[Index Model] --> [Vector Document Store]
 [Index Model] --> [BM25 Index]
 
-[Search Model] --> [Vector Store]
+[Search Model] --> [Vector Document Store]
 [Search Model] --> [BM25 Index]
 [Search Model] --> [Embedding Service]
 @enduml
@@ -102,10 +102,48 @@ package "Infrastructure Layer" {
 ### 2.4 インフラストラクチャ層の主要クラス
 | クラス名 | 説明 | 責務 |
 |----------|------|------|
-| `VectorStore` | ベクトルストア | - ベクトルデータの永続化<br>- ベクトル検索 |
+| `VectorDocumentStore` | ベクトルドキュメントストアの基底クラス | - 文書の分割と管理<br>- 親文書と分割文書の関連付け<br>- メタデータの管理 |
+| `ChromaDocumentStore` | ChromaDBベースのベクトルドキュメントストア | - ベクトルデータの永続化<br>- ベクトル検索<br>- ChromaDBとの連携 |
 | `BM25Index` | BM25インデックス | - キーワードインデックスの管理<br>- BM25検索 |
 | `FileSystem` | ファイルシステム | - 文書ファイルの管理<br>- キャッシュ管理 |
 | `EmbeddingService` | 埋め込みサービス | - テキストのベクトル化<br>- モデル管理 |
+
+### 2.5 ベクトルドキュメントストアの構造
+```plantuml
+@startuml
+abstract class VectorDocumentStore {
+    #chunk_size: int
+    #chunk_overlap: int
+    +add_documents()
+    +get_document()
+    +get_parent_document()
+    +get_split_documents()
+    #{abstract} _add_documents()
+    #{abstract} _get_document()
+    #{abstract} _get_split_documents()
+}
+
+class ChromaDocumentStore {
+    -persist_directory: str
+    -collection_name: str
+    -embedding_function: Embeddings
+    -vectorstore: Chroma
+    +as_retriever()
+}
+
+VectorDocumentStore <|-- ChromaDocumentStore
+
+note right of VectorDocumentStore
+  基底クラスとして文書の分割と
+  メタデータ管理を提供
+end note
+
+note right of ChromaDocumentStore
+  ChromaDBを使用した具体的な
+  ベクトルストアの実装
+end note
+@enduml
+```
 
 ## 3. 主要データ（データの種類、構造）
 
@@ -149,7 +187,7 @@ Index "1" -- "*" SearchResult
 ### 3.2 データフロー
 1. 文書追加フロー
    - 文書ファイルの読み込み
-   - テキスト抽出とチャンク分割
+   - テキスト抽出とチャンク分割（VectorDocumentStoreで自動処理）
    - ベクトル埋め込みの計算
    - インデックスの更新
 
@@ -169,6 +207,7 @@ Index "1" -- "*" SearchResult
 1. ベクトルストア（ChromaDB）
    - コレクション：文書ID、ベクトル、メタデータ
    - インデックス：ベクトル検索用
+   - メタデータ：親文書ID、分割情報
 
 2. BM25インデックス
    - 文書ID、トークン、スコア

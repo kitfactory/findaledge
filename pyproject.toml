@@ -24,6 +24,7 @@ classifiers = [
 
 dependencies = [
     "bm25s-j>=0.1.1",
+    "faiss-cpu",
     "langchain>=0.2.17",
     "langchain-chroma",
     "langchain-community>=0.2.19",

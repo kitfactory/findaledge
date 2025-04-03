@@ -54,7 +54,7 @@ participant "DocumentManager" as DM
 participant "Document" as Doc
 participant "EmbeddingService" as ES
 participant "IndexManager" as IM
-participant "VectorStore" as VS
+participant "VectorDocumentStore" as VS
 participant "BM25Index" as BM25
 
 FS -> DM: 文書変更通知
@@ -86,7 +86,7 @@ participant "UserAPIInterface" as API
 participant "DocumentManager" as DM
 participant "Document" as Doc
 participant "IndexManager" as IM
-participant "VectorStore" as VS
+participant "VectorDocumentStore" as VS
 participant "BM25Index" as BM25
 
 User -> API: 文書削除要求
@@ -123,7 +123,7 @@ actor User
 participant "UserAPIInterface" as API
 participant "SearchService" as SS
 participant "SearchModel" as SM
-participant "VectorStore" as VS
+participant "VectorDocumentStore" as VS
 participant "BM25Index" as BM25
 participant "EmbeddingService" as ES
 
@@ -158,7 +158,7 @@ actor User
 participant "UserAPIInterface" as API
 participant "SearchService" as SS
 participant "SearchModel" as SM
-participant "VectorStore" as VS
+participant "VectorDocumentStore" as VS
 participant "BM25Index" as BM25
 participant "EmbeddingService" as ES
 
@@ -200,7 +200,7 @@ participant "LLM Agent" as Agent
 participant "OpenAIAgentsInterface" as OAI
 participant "SearchService" as SS
 participant "SearchModel" as SM
-participant "VectorStore" as VS
+participant "VectorDocumentStore" as VS
 participant "BM25Index" as BM25
 participant "EmbeddingService" as ES
 
@@ -235,7 +235,7 @@ OAI --> Agent: コンテキスト提供
 ```plantuml
 @startuml
 participant "IndexManager" as IM
-participant "VectorStore" as VS
+participant "VectorDocumentStore" as VS
 participant "BM25Index" as BM25
 participant "FileSystem" as FS
 
@@ -262,7 +262,7 @@ FS --> IM: 保存完了
 @startuml
 participant "IndexManager" as IM
 participant "FileSystem" as FS
-participant "VectorStore" as VS
+participant "VectorDocumentStore" as VS
 participant "BM25Index" as BM25
 
 IM -> FS: インデックスファイル検索
@@ -290,7 +290,7 @@ BM25 --> IM: 復元完了
 @startuml
 participant "IndexManager" as IM
 participant "Document" as Doc
-participant "VectorStore" as VS
+participant "VectorDocumentStore" as VS
 participant "BM25Index" as BM25
 participant "FileSystem" as FS
 
@@ -357,7 +357,7 @@ participant "LLM Agent" as Agent
 participant "OpenAIAgentsInterface" as OAI
 participant "SearchService" as SS
 participant "SearchModel" as SM
-participant "VectorStore" as VS
+participant "VectorDocumentStore" as VS
 participant "BM25Index" as BM25
 
 Agent -> OAI: コンテキスト要求
@@ -389,7 +389,7 @@ actor User
 participant "LangChainInterface" as LC
 participant "SearchService" as SS
 participant "SearchModel" as SM
-participant "VectorStore" as VS
+participant "VectorDocumentStore" as VS
 participant "BM25Index" as BM25
 
 User -> LC: LangChain使用

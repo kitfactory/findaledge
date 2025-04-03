@@ -56,7 +56,7 @@ FinderLedgeライブラリは、シンプルかつ拡張性のあるクラス構
     各文書を表現するデータクラスです。文書IDやタイトル、テキスト本文、メタデータ（ファイルパス、更新日時など）を保持します。検索結果として返す際にもこのクラスインスタンスのリストで提供します。LangChainのDocumentクラス互換のインターフェースを持ち、.page_contentや.metadataプロパティで内容にアクセスできます。
 * EmbeddingModel クラス/インタフェース:
     抽象的なEmbedding計算機能を表します。具体的にはOpenAIのEmbeddings APIラッパーやOllamaのローカルモデル呼び出しを実装したクラスのインスタンスが渡されます。FinderLedgeはこれを用いてembed(text: str) -> List[float]の形でベクトル化します。デフォルト実装としてLangChainのOpenAIEmbeddingsやHuggingFaceエンコーダを内包できます。
-* VectorStore（Chroma）:
+* VectorDocumentStore（Chroma）:
     LangChain経由で利用するベクトルデータベースです。vector_storeプロパティにはChromaのインスタンスを保持し、add_documents(), similarity_search() 等のメソッドで操作します。Chromaはpersist_directoryを指定することでローカルにデータを保存・再利用でき​、FinderLedgeではpersist_dirとして例えば"./indexes/{db_name}"のようなパスを設定します。これにより、db_name毎にベクトルストアがディスク上に保持されます。
 * BM25Index:
     bm25s_j.BM25（bm25s-jライブラリ）のインスタンスを保持します。bm25_indexプロパティとして管理され、検索時にはbm25_index.search(query_tokens, top_n)のようなメソッド（※実際のAPIはライブラリに準拠）で上位文書スコアを取得します。bm25s-jにはコーパスの追加・削除用の明示的メソッドはありませんが、FinderLedgeでは内部的に文書リストを更新し再インデックスを走らせることで対応します。少数の追加・削除であれば負荷は小さいため、数千文書規模なら十分実用的です。

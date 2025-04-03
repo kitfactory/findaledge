@@ -11,8 +11,8 @@ from typing import List, Optional, Union, Dict
 import numpy as np
 import os
 import json
-from .document import Document
-from .document_store import DocumentStore
+from langchain.schema import Document as LangchainDocument
+from .document_store.document_store import BaseDocumentStore
 from .embedding_store import EmbeddingStore
 from .embedding_model import EmbeddingModel
 from .tokenizer import Tokenizer
@@ -25,10 +25,10 @@ class SearchResult:
     検索結果を表すクラス
 
     Attributes:
-        document (Document): The matched document
+        document (LangchainDocument): The matched document
         score (float): The search score
     """
-    document: Document
+    document: LangchainDocument
     score: float
 
 class Finder:
@@ -39,7 +39,7 @@ class Finder:
     Attributes:
         tokenizer (Tokenizer): Tokenizer for text processing
         embedding_model (EmbeddingModel): Model for generating embeddings
-        document_store (DocumentStore): Store for managing documents
+        document_store (BaseDocumentStore): Store for managing documents
         embedding_store (EmbeddingStore): Store for managing embeddings
         bm25 (BM25): BM25 search engine
         storage_dir (str): Directory to store persistent data
@@ -49,7 +49,7 @@ class Finder:
         self,
         tokenizer: Tokenizer,
         embedding_model: EmbeddingModel,
-        document_store: DocumentStore,
+        document_store: BaseDocumentStore,
         embedding_store: EmbeddingStore,
         bm25: BM25,
         storage_dir: str
@@ -61,7 +61,7 @@ class Finder:
         Args:
             tokenizer (Tokenizer): Tokenizer for text processing
             embedding_model (EmbeddingModel): Model for generating embeddings
-            document_store (DocumentStore): Store for managing documents
+            document_store (BaseDocumentStore): Store for managing documents
             embedding_store (EmbeddingStore): Store for managing embeddings
             bm25 (BM25): BM25 search engine
             storage_dir (str): Directory to store persistent data
@@ -86,43 +86,56 @@ class Finder:
             for doc_id in self.bm25.doc_ids:
                 doc = self.document_store.get_document(doc_id)
                 if doc:
-                    self.document_contents[doc_id] = doc.content
+                    self.document_contents[doc_id] = doc.page_content
         else:
             # 既存の文書を読み込む
             self.document_contents = {}
-            for doc_id in self.document_store.list_documents():
-                doc = self.document_store.get_document(doc_id)
-                if doc:
-                    self.document_contents[doc_id] = doc.content
+            # list_documents() が返すのが LangChain Document のリストと仮定
+            all_docs = self.document_store.list_documents()
+            for doc in all_docs:
+                 # LangChain Document から id と page_content を取得
+                 doc_id = doc.metadata.get("id")
+                 content = doc.page_content
+                 if doc_id and content:
+                      self.document_contents[doc_id] = content
             # BM25の状態が存在しない場合のみ更新
             documents = list(self.document_contents.values())
             doc_ids = list(self.document_contents.keys())
             self.bm25.fit(documents, doc_ids)
             self.bm25.save(self.bm25_path)
 
-    def add_document(self, document: Document) -> None:
+    def add_document(self, document: LangchainDocument) -> None:
         """
         Add a document to the finder
         文書をfinderに追加
 
         Args:
-            document (Document): Document to add
+            document (LangchainDocument): Document to add
 
         Raises:
             ValueError: If document is None or has no content
         """
         if document is None:
             raise ValueError("Document cannot be None")
-        if not document.content:
+        if not document.page_content:
             raise ValueError("Document content cannot be empty")
 
-        # 文書を保存
+        # LangChain DocumentからIDを取得（metadataにあると仮定）
+        doc_id = document.metadata.get("id")
+        if not doc_id:
+             # IDがない場合の処理（例: UUID生成、エラー発生など）
+             import uuid
+             doc_id = str(uuid.uuid4())
+             document.metadata["id"] = doc_id # メタデータにもIDを設定
+             print(f"Warning: Document added without an explicit ID. Generated ID: {doc_id}")
+
+        # 文書を保存 (document_store.add_document が LangchainDocument を受け入れると仮定)
         self.document_store.add_document(document)
-        self.document_contents[document.id] = document.content
+        self.document_contents[doc_id] = document.page_content
 
         # 埋め込みを生成して保存
-        embedding = self.embedding_model.embed_text(document.content)
-        self.embedding_store.add_embedding(document.id, embedding)
+        embedding = self.embedding_model.embed_text(document.page_content)
+        self.embedding_store.add_embedding(doc_id, embedding)
 
         # BM25を更新
         self._update_bm25()
@@ -281,14 +294,22 @@ class Finder:
         Returns:
             Finder: New finder instance
         """
-        document_store = DocumentStore.from_dict(data["document_store"])
+        document_store = BaseDocumentStore.from_dict(data["document_store"])
         embedding_store = EmbeddingStore.from_dict(data["embedding_store"])
         bm25 = BM25.from_dict(data["bm25"])
+
+        # storage_dir が data に含まれていると仮定して追加
+        storage_dir = data.get("storage_dir") # None の可能性あり
+        if storage_dir is None:
+             # storage_dir がない場合のデフォルト処理（例: カレントディレクトリ、エラー）
+             # storage_dir = "."
+             raise ValueError("storage_dir is required in the dictionary data for Finder.from_dict")
 
         return cls(
             tokenizer=None,  # トークナイザーは別途設定が必要
             embedding_model=None,  # 埋め込みモデルは別途設定が必要
             document_store=document_store,
             embedding_store=embedding_store,
-            bm25=bm25
+            bm25=bm25,
+            storage_dir=storage_dir # storage_dir を渡す
         ) 
