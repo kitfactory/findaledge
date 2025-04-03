@@ -16,11 +16,15 @@ from .text_splitter import TextSplitter
 from .document_loader import DocumentLoader
 from .document_store.document_store import BaseDocumentStore
 # from .embedding_store import EmbeddingStore # <-- 削除
-from .finder import Finder
-from .bm25 import BM25
+# from .finder import Finder # <-- 一時的にコメントアウト
+# from .bm25 import BM25 # <-- 削除
 from .tokenizer import Tokenizer
 from .document_splitter import DocumentSplitter, DocumentType
 from .document_store.vector_document_store import VectorDocumentStore
+from .embeddings_factory import EmbeddingModelFactory
+
+# 新しく追加した BM25sStore もインポートする (必要であれば)
+from .document_store.bm25s import BM25sStore
 
 __version__ = "0.1.0"
 __author__ = "Your Name"
@@ -32,11 +36,13 @@ __all__ = [
     "VectorDocumentStore",
     # "EmbeddingStore", # <-- 削除
     # "OpenAIEmbeddingModel", # <-- 削除
+    "EmbeddingModelFactory",
     "TextSplitter",
     "DocumentLoader",
-    "Finder",
-    "BM25",
+    # "Finder", # <-- 一時的にコメントアウト
+    # "BM25", # <-- 削除
     "Tokenizer",
     "DocumentSplitter",
-    "DocumentType"
+    "DocumentType",
+    "BM25sStore", # 新しく追加したクラスを __all__ に追加 (必要であれば)
 ] 
