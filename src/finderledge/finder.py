@@ -6,267 +6,252 @@ This class provides functionality for searching documents using a combination of
 このクラスは、埋め込みとBM25を組み合わせて文書を検索する機能を提供します。
 """
 
-from dataclasses import dataclass
-from typing import List, Optional, Union, Dict
+from dataclasses import dataclass, field
+from typing import List, Optional, Union, Dict, Tuple, Any
 import numpy as np
 import os
 import json
 from langchain.schema import Document as LangchainDocument
 from .document_store.document_store import BaseDocumentStore
-from .embedding_store import EmbeddingStore
-from .embedding_model import EmbeddingModel
 from .tokenizer import Tokenizer
-from .bm25 import BM25
+import asyncio # For potential async retriever calls
+from langchain_core.documents import Document # Updated import
+from langchain_core.retrievers import BaseRetriever # Updated import
 
 @dataclass
 class SearchResult:
     """
-    A class representing a search result
-    検索結果を表すクラス
+    A class representing a search result after reranking.
+    リランク後の検索結果を表すクラス。
 
     Attributes:
-        document (LangchainDocument): The matched document
-        score (float): The search score
+        document (Document): The matched document / マッチしたドキュメント
+        score (float): The reranked score (e.g., RRF score) / リランク後のスコア（例: RRFスコア）
     """
-    document: LangchainDocument
+    document: Document
     score: float
 
 class Finder:
     """
-    A class for searching documents using embeddings and BM25
-    埋め込みとBM25を使用して文書を検索するためのクラス
+    Reranks results from multiple LangChain Retrievers using Reciprocal Rank Fusion (RRF).
+    Reciprocal Rank Fusion (RRF) を使用して、複数のLangChain Retrieverからの結果をリランクします。
 
-    Attributes:
-        tokenizer (Tokenizer): Tokenizer for text processing
-        embedding_model (EmbeddingModel): Model for generating embeddings
-        document_store (BaseDocumentStore): Store for managing documents
-        embedding_store (EmbeddingStore): Store for managing embeddings
-        bm25 (BM25): BM25 search engine
-        storage_dir (str): Directory to store persistent data
+    Takes a list of retrievers and reranks their combined results based on rank.
+    リトリーバーのリストを受け取り、順位に基づいて結合された結果をリランクします。
     """
 
     def __init__(
         self,
-        tokenizer: Tokenizer,
-        embedding_model: EmbeddingModel,
-        document_store: BaseDocumentStore,
-        embedding_store: EmbeddingStore,
-        bm25: BM25,
-        storage_dir: str
+        retrievers: List[BaseRetriever],
+        rrf_k: int = 60, # RRF constant, typically 60
     ):
         """
-        Initialize the finder
-        finderを初期化
+        Initialize the Finder (Reranker).
+        Finder (Reranker) を初期化します。
 
         Args:
-            tokenizer (Tokenizer): Tokenizer for text processing
-            embedding_model (EmbeddingModel): Model for generating embeddings
-            document_store (BaseDocumentStore): Store for managing documents
-            embedding_store (EmbeddingStore): Store for managing embeddings
-            bm25 (BM25): BM25 search engine
-            storage_dir (str): Directory to store persistent data
+            retrievers (List[BaseRetriever]): A list of LangChain BaseRetriever instances.
+                LangChain BaseRetrieverインスタンスのリスト。
+            rrf_k (int): The ranking constant for RRF calculation. Defaults to 60.
+                         RRF計算のためのランキング定数。デフォルトは60。
         """
-        self.tokenizer = tokenizer
-        self.embedding_model = embedding_model
-        self.document_store = document_store
-        self.embedding_store = embedding_store
-        self.bm25 = bm25
-        self.storage_dir = storage_dir
-        self.document_contents = {}
-
-        # 永続化ディレクトリの作成
-        os.makedirs(storage_dir, exist_ok=True)
-        self.bm25_path = os.path.join(storage_dir, "bm25.json")
-
-        # BM25の状態を読み込む
-        if os.path.exists(self.bm25_path):
-            self.bm25.load(self.bm25_path)
-            # 既存の文書を読み込む（BM25の順序を維持）
-            self.document_contents = {}
-            for doc_id in self.bm25.doc_ids:
-                doc = self.document_store.get_document(doc_id)
-                if doc:
-                    self.document_contents[doc_id] = doc.page_content
-        else:
-            # 既存の文書を読み込む
-            self.document_contents = {}
-            # list_documents() が返すのが LangChain Document のリストと仮定
-            all_docs = self.document_store.list_documents()
-            for doc in all_docs:
-                 # LangChain Document から id と page_content を取得
-                 doc_id = doc.metadata.get("id")
-                 content = doc.page_content
-                 if doc_id and content:
-                      self.document_contents[doc_id] = content
-            # BM25の状態が存在しない場合のみ更新
-            documents = list(self.document_contents.values())
-            doc_ids = list(self.document_contents.keys())
-            self.bm25.fit(documents, doc_ids)
-            self.bm25.save(self.bm25_path)
-
-    def add_document(self, document: LangchainDocument) -> None:
-        """
-        Add a document to the finder
-        文書をfinderに追加
-
-        Args:
-            document (LangchainDocument): Document to add
-
-        Raises:
-            ValueError: If document is None or has no content
-        """
-        if document is None:
-            raise ValueError("Document cannot be None")
-        if not document.page_content:
-            raise ValueError("Document content cannot be empty")
-
-        # LangChain DocumentからIDを取得（metadataにあると仮定）
-        doc_id = document.metadata.get("id")
-        if not doc_id:
-             # IDがない場合の処理（例: UUID生成、エラー発生など）
-             import uuid
-             doc_id = str(uuid.uuid4())
-             document.metadata["id"] = doc_id # メタデータにもIDを設定
-             print(f"Warning: Document added without an explicit ID. Generated ID: {doc_id}")
-
-        # 文書を保存 (document_store.add_document が LangchainDocument を受け入れると仮定)
-        self.document_store.add_document(document)
-        self.document_contents[doc_id] = document.page_content
-
-        # 埋め込みを生成して保存
-        embedding = self.embedding_model.embed_text(document.page_content)
-        self.embedding_store.add_embedding(doc_id, embedding)
-
-        # BM25を更新
-        self._update_bm25()
-
-    def remove_document(self, document_id: str) -> None:
-        """
-        Remove a document from the finder
-        文書をfinderから削除
-
-        Args:
-            document_id (str): ID of the document to remove
-
-        Raises:
-            ValueError: If document_id is not found
-        """
-        if document_id not in self.document_contents:
-            raise ValueError(f"Document with ID {document_id} not found")
-
-        # 文書を削除
-        self.document_store.delete_document(document_id)
-        del self.document_contents[document_id]
-
-        # 埋め込みを削除
-        self.embedding_store.delete_embedding(document_id)
-
-        # BM25を更新
-        self._update_bm25()
-
-    def _update_bm25(self) -> None:
-        """
-        Update BM25 model and save its state
-        BM25モデルを更新して状態を保存
-        """
-        # BM25を更新
-        documents = list(self.document_contents.values())
-        doc_ids = list(self.document_contents.keys())
-        self.bm25.fit(documents, doc_ids)
-        # 状態を保存
-        self.bm25.save(self.bm25_path)
+        if not retrievers:
+            raise ValueError("At least one retriever must be provided.")
+        self.retrievers = retrievers
+        self.rrf_k = rrf_k
 
     def search(
         self,
         query: str,
-        search_mode: str = "hybrid",
-        top_k: int = 10
+        top_k: int = 10,
+        # Optional: parameter to control how many results to fetch from each retriever
+        k_per_retriever: Optional[int] = None,
+        filter: Optional[Dict[str, Any]] = None
     ) -> List[SearchResult]:
         """
-        Search for documents using the specified mode
-        指定されたモードで文書を検索
+        Retrieves documents from all underlying retrievers and reranks them using RRF.
+        すべての基礎となるリトリーバーからドキュメントを取得し、RRFを使用してリランクします。
 
         Args:
-            query (str): Search query
-            search_mode (str): Search mode ("hybrid", "semantic", or "keyword")
-            top_k (int): Number of results to return
+            query (str): The search query. / 検索クエリ。
+            top_k (int): The final number of documents to return after reranking.
+                         リランク後に返す最終的なドキュメント数。
+            k_per_retriever (Optional[int]): How many documents to fetch from each retriever
+                                             before reranking. If None, uses top_k.
+                                             リランク前に各リトリーバーから取得するドキュメント数。
+                                             Noneの場合、top_kを使用します。
+            filter (Optional[Dict[str, Any]]): Metadata filter to apply to the retrievers.
+                                                 リトリーバーに適用するメタデータフィルター。
 
         Returns:
-            List[SearchResult]: List of search results
-
-        Raises:
-            ValueError: If search_mode is invalid
+            List[SearchResult]: A list of reranked search results.
+                                リランクされた検索結果のリスト。
         """
-        if not query:
-            return []
+        if k_per_retriever is None:
+            # Fetch more initially to allow for better reranking diversity
+            k_per_retriever = max(top_k, 10) * len(self.retrievers)
 
-        if search_mode not in ["hybrid", "semantic", "keyword"]:
-            raise ValueError(f"Unknown search mode: {search_mode}")
 
-        # クエリの埋め込みを生成
-        query_embedding = self.embedding_model.embed_text(query)
+        # 1. Get results from all retrievers (synchronously for now)
+        all_results: List[Tuple[BaseRetriever, List[Document]]] = []
+        for retriever in self.retrievers:
+            try:
+                # Pass k and filter via kwargs if supported
+                retriever_kwargs = {'k': k_per_retriever}
+                if filter:
+                    retriever_kwargs['filter'] = filter
 
-        # 文書IDのリストを取得（BM25の順序を使用）
-        doc_ids = self.bm25.doc_ids
-        if not doc_ids:
-            return []
+                relevant_docs = retriever.get_relevant_documents(query, **retriever_kwargs)
 
-        # 各文書のスコアを計算
-        scores = []
-        for doc_id in doc_ids:
-            if search_mode == "hybrid":
-                # ハイブリッド検索：セマンティック検索とキーワード検索の結果を組み合わせる
-                semantic_score = self._calculate_semantic_score(query_embedding, doc_id)
-                tokens = self.tokenizer.tokenize(query)
-                keyword_score = self.bm25.score(tokens, doc_id)
-                # Reciprocal Rank Fusion (RRF)を使用してスコアを組み合わせる
-                rrf_k = 60  # RRFのパラメータ
-                rrf_semantic = 1 / (rrf_k + semantic_score)
-                rrf_keyword = 1 / (rrf_k + keyword_score)
-                score = rrf_semantic + rrf_keyword
-            elif search_mode == "semantic":
-                # セマンティック検索のみ
-                score = self._calculate_semantic_score(query_embedding, doc_id)
-            else:  # keyword
-                # キーワード検索のみ
-                tokens = self.tokenizer.tokenize(query)
-                score = self.bm25.score(tokens, doc_id)
+                # Limit results per retriever if necessary (safety measure)
+                all_results.append((retriever, relevant_docs[:k_per_retriever]))
+            except TypeError: # Handle retrievers that don't accept 'k' or 'filter'
+                 try:
+                      # Try without filter first
+                      retriever_kwargs_no_filter = {'k': k_per_retriever}
+                      relevant_docs = retriever.get_relevant_documents(query, **retriever_kwargs_no_filter)
+                      all_results.append((retriever, relevant_docs[:k_per_retriever]))
+                 except TypeError: # Try without k and filter
+                     try:
+                         relevant_docs = retriever.get_relevant_documents(query)
+                         all_results.append((retriever, relevant_docs[:k_per_retriever]))
+                     except Exception as e:
+                         print(f"Error retrieving from {retriever.__class__.__name__} (no kwargs): {e}")
+                         all_results.append((retriever, []))
+                 except Exception as e:
+                      print(f"Error retrieving from {retriever.__class__.__name__} (without filter kwarg): {e}")
+                      all_results.append((retriever, []))
+            except Exception as e:
+                print(f"Error retrieving from {retriever.__class__.__name__}: {e}")
+                all_results.append((retriever, [])) # Append empty list on error
 
-            scores.append((doc_id, score))
+        # 2. Calculate RRF scores
+        rrf_scores: Dict[str, float] = {} # Store combined RRF score per doc ID
+        doc_map: Dict[str, Document] = {} # Store document objects by ID to avoid duplicates
 
-        # スコアでソート（BM25の順序を維持）
-        scores.sort(key=lambda x: (-x[1], doc_ids.index(x[0])))
+        for retriever, docs in all_results:
+            for rank, doc in enumerate(docs):
+                # --- Get unique Document ID ---
+                # Attempt common metadata keys, provide default if none found
+                doc_id = doc.metadata.get("id") or \
+                         doc.metadata.get("doc_id") or \
+                         str(hash(doc.page_content + doc.metadata.get("source", ""))) # Fallback ID based on content+source hash
 
-        # 上位k件の結果を返す
-        results = []
-        for doc_id, score in scores[:top_k]:
-            document = self.document_store.get_document(doc_id)
+                # Store the document object using the derived ID
+                if doc_id not in doc_map:
+                    doc_map[doc_id] = doc # Store the document object
+
+                # Calculate RRF score for this rank and add to total
+                score = 1.0 / (self.rrf_k + rank + 1) # Rank is 0-based
+                rrf_scores[doc_id] = rrf_scores.get(doc_id, 0.0) + score
+
+        # 3. Sort documents by combined RRF score
+        sorted_doc_ids = sorted(rrf_scores.keys(), key=lambda x: rrf_scores[x], reverse=True)
+
+        # 4. Format results
+        final_results: List[SearchResult] = []
+        for doc_id in sorted_doc_ids[:top_k]:
+            document = doc_map.get(doc_id)
+            if document: # Should always be found if doc_id is in rrf_scores
+                final_results.append(SearchResult(document=document, score=rrf_scores[doc_id]))
+
+        return final_results
+
+    async def asearch(
+        self,
+        query: str,
+        top_k: int = 10,
+        k_per_retriever: Optional[int] = None,
+        filter: Optional[Dict[str, Any]] = None
+    ) -> List[SearchResult]:
+        """
+        Asynchronously retrieves documents from all underlying retrievers and reranks them using RRF.
+        非同期ですべての基礎となるリトリーバーからドキュメントを取得し、RRFを使用してリランクします。
+
+        Args:
+            query (str): The search query. / 検索クエリ。
+            top_k (int): The final number of documents to return after reranking.
+                         リランク後に返す最終的なドキュメント数。
+            k_per_retriever (Optional[int]): How many documents to fetch from each retriever
+                                             before reranking. If None, uses top_k.
+                                             リランク前に各リトリーバーから取得するドキュメント数。
+                                             Noneの場合、top_kを使用します。
+            filter (Optional[Dict[str, Any]]): Metadata filter to apply to the retrievers.
+                                                 リトリーバーに適用するメタデータフィルター。
+
+        Returns:
+            List[SearchResult]: A list of reranked search results.
+                                リランクされた検索結果のリスト。
+        """
+        if k_per_retriever is None:
+             # Fetch more initially to allow for better reranking diversity
+             k_per_retriever = max(top_k, 10) * len(self.retrievers)
+
+        # 1. Get results from all retrievers asynchronously
+        async def _get_docs(retriever: BaseRetriever) -> List[Document]:
+            try:
+                # Pass k and filter via kwargs if supported
+                retriever_kwargs = {'k': k_per_retriever}
+                if filter:
+                    retriever_kwargs['filter'] = filter
+                return await retriever.aget_relevant_documents(query, **retriever_kwargs)
+            except TypeError: # Handle retrievers that don't accept 'k' or 'filter'
+                 try:
+                     # Try without filter first
+                     retriever_kwargs_no_filter = {'k': k_per_retriever}
+                     return await retriever.aget_relevant_documents(query, **retriever_kwargs_no_filter)
+                 except TypeError: # Try without k and filter
+                     try:
+                         return await retriever.aget_relevant_documents(query)
+                     except Exception as e:
+                          print(f"Error retrieving async from {retriever.__class__.__name__} (no kwargs): {e}")
+                          return []
+                 except Exception as e:
+                     print(f"Error retrieving async from {retriever.__class__.__name__} (without filter kwarg): {e}")
+                     return []
+            except Exception as e:
+                print(f"Error retrieving async from {retriever.__class__.__name__}: {e}")
+                return []
+
+        tasks = [_get_docs(retriever) for retriever in self.retrievers]
+        results_list: List[List[Document]] = await asyncio.gather(*tasks)
+
+        # Combine results with their retriever (though not strictly needed for RRF logic itself)
+        all_results_async: List[Tuple[BaseRetriever, List[Document]]] = list(zip(self.retrievers, results_list))
+        all_results = [(r, docs[:k_per_retriever]) for r, docs in all_results_async] # Limit results
+
+
+        # 2. Calculate RRF scores (same logic as sync version)
+        rrf_scores: Dict[str, float] = {}
+        doc_map: Dict[str, Document] = {}
+
+        for retriever, docs in all_results:
+            for rank, doc in enumerate(docs):
+                 # --- Get unique Document ID ---
+                 doc_id = doc.metadata.get("id") or \
+                          doc.metadata.get("doc_id") or \
+                          str(hash(doc.page_content + doc.metadata.get("source", ""))) # Fallback ID
+
+                 # Store the document object using the derived ID
+                 if doc_id not in doc_map:
+                     doc_map[doc_id] = doc
+
+                 # Calculate RRF score for this rank and add to total
+                 score = 1.0 / (self.rrf_k + rank + 1)
+                 rrf_scores[doc_id] = rrf_scores.get(doc_id, 0.0) + score
+
+
+        # 3. Sort documents by combined RRF score
+        sorted_doc_ids = sorted(rrf_scores.keys(), key=lambda x: rrf_scores[x], reverse=True)
+
+        # 4. Format results
+        final_results: List[SearchResult] = []
+        for doc_id in sorted_doc_ids[:top_k]:
+            document = doc_map.get(doc_id)
             if document:
-                results.append(SearchResult(document, score))
+                final_results.append(SearchResult(document=document, score=rrf_scores[doc_id]))
 
-        return results
-
-    def _calculate_semantic_score(self, query_embedding: np.ndarray, doc_id: str) -> float:
-        """
-        Calculate semantic similarity score
-        セマンティック類似度スコアを計算
-
-        Args:
-            query_embedding (np.ndarray): Query embedding
-            doc_id (str): Document ID
-
-        Returns:
-            float: Semantic similarity score
-        """
-        doc_embedding = self.embedding_store.get_embedding(doc_id)
-        if doc_embedding is None:
-            return 0.0
-
-        # コサイン類似度を計算
-        similarity = np.dot(query_embedding, doc_embedding) / (
-            np.linalg.norm(query_embedding) * np.linalg.norm(doc_embedding)
-        )
-        return float(similarity)
+        return final_results
 
     def to_dict(self) -> dict:
         """
@@ -277,9 +262,8 @@ class Finder:
             dict: Dictionary representation of the finder
         """
         return {
-            "document_store": self.document_store.to_dict(),
-            "embedding_store": self.embedding_store.to_dict(),
-            "bm25": self.bm25.to_dict()
+            "retrievers": [retriever.to_dict() for retriever in self.retrievers],
+            "rrf_k": self.rrf_k
         }
 
     @classmethod
@@ -294,22 +278,10 @@ class Finder:
         Returns:
             Finder: New finder instance
         """
-        document_store = BaseDocumentStore.from_dict(data["document_store"])
-        embedding_store = EmbeddingStore.from_dict(data["embedding_store"])
-        bm25 = BM25.from_dict(data["bm25"])
-
-        # storage_dir が data に含まれていると仮定して追加
-        storage_dir = data.get("storage_dir") # None の可能性あり
-        if storage_dir is None:
-             # storage_dir がない場合のデフォルト処理（例: カレントディレクトリ、エラー）
-             # storage_dir = "."
-             raise ValueError("storage_dir is required in the dictionary data for Finder.from_dict")
+        retrievers = [BaseRetriever.from_dict(retriever_data) for retriever_data in data["retrievers"]]
+        rrf_k = data["rrf_k"]
 
         return cls(
-            tokenizer=None,  # トークナイザーは別途設定が必要
-            embedding_model=None,  # 埋め込みモデルは別途設定が必要
-            document_store=document_store,
-            embedding_store=embedding_store,
-            bm25=bm25,
-            storage_dir=storage_dir # storage_dir を渡す
+            retrievers=retrievers,
+            rrf_k=rrf_k
         ) 

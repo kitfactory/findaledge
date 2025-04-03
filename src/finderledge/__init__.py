@@ -16,7 +16,7 @@ from .text_splitter import TextSplitter
 from .document_loader import DocumentLoader
 from .document_store.document_store import BaseDocumentStore
 # from .embedding_store import EmbeddingStore # <-- 削除
-# from .finder import Finder # <-- 一時的にコメントアウト
+from .finder import Finder # <-- コメントアウト解除
 # from .bm25 import BM25 # <-- 削除
 from .tokenizer import Tokenizer
 from .document_splitter import DocumentSplitter, DocumentType
@@ -39,7 +39,7 @@ __all__ = [
     "EmbeddingModelFactory",
     "TextSplitter",
     "DocumentLoader",
-    # "Finder", # <-- 一時的にコメントアウト
+    "Finder", # <-- コメントアウト解除
     # "BM25", # <-- 削除
     "Tokenizer",
     "DocumentSplitter",
