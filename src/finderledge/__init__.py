@@ -8,12 +8,14 @@ using various embedding models and search algorithms.
 文書を検索・取得する機能を提供します。
 """
 
+from . import env # envモジュールをインポート
+
 # from .document import Document  # <-- 削除
-from .embedding import OpenAIEmbeddingModel
+# from .embedding import OpenAIEmbeddingModel # <-- 削除
 from .text_splitter import TextSplitter
 from .document_loader import DocumentLoader
 from .document_store.document_store import BaseDocumentStore
-from .embedding_store import EmbeddingStore
+# from .embedding_store import EmbeddingStore # <-- 削除
 from .finder import Finder
 from .bm25 import BM25
 from .tokenizer import Tokenizer
@@ -28,8 +30,8 @@ __all__ = [
     # "Document",  # <-- 削除
     "BaseDocumentStore",
     "VectorDocumentStore",
-    "EmbeddingStore",
-    "OpenAIEmbeddingModel",
+    # "EmbeddingStore", # <-- 削除
+    # "OpenAIEmbeddingModel", # <-- 削除
     "TextSplitter",
     "DocumentLoader",
     "Finder",
