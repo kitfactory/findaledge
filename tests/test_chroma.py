@@ -22,7 +22,7 @@ from langchain.vectorstores.base import VectorStoreRetriever # For type hint
 # Import Chroma from the correct community path
 from langchain_community.vectorstores import Chroma
 
-from finderledge.document_store.chroma import ChromaDocumentStore
+from findaledge.document_store.chroma import ChromaDocumentStore
 
 # Mock Chroma client directly if needed for specific tests, otherwise rely on patching Chroma class
 # from chromadb import Client, Collection
@@ -98,7 +98,7 @@ def mock_chroma():
     Mock Chroma vector document store
     Chromaベクトルドキュメントストアのモック
     """
-    with patch('finderledge.document_store.chroma.Chroma') as mock:
+    with patch('findaledge.document_store.chroma.Chroma') as mock:
         mock_instance = mock.return_value
         # Mock similarity_search method
         mock_instance.similarity_search.return_value = []

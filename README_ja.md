@@ -1,138 +1,167 @@
-# FinderLedge 🧭✨
+# 🇯🇵 FindaLedge: RAGのためのシンプルなアンサンブル検索ライブラリ 🔍
 
-**RAGアプリケーションのための強力なアンサンブル検索システムを簡単に構築！**
+**FindaLedge** は、Retrieval-Augmented Generation (RAG) アプリケーション向けに、**アンサンブル検索システム**の構築と管理を簡素化するために設計されたPythonライブラリです。ベクトル検索とキーワード検索を巧みに組み合わせ、複数のドキュメントストア（Chroma, FAISS, BM25など）のセットアップ、ドキュメントの取り込み、インデックス管理、検索結果のマージ（RRFを使用）といった複雑さを抽象化します。
 
-FinderLedgeは、複数のドキュメント検索手法（ベクトル検索やキーワード検索など）のセットアップと管理、およびそれらの結果を組み合わせて、より関連性が高く堅牢なRAGコンテキスト生成を行うプロセスを簡素化します。
+✨ **強力なRAG検索バックエンドを簡単に構築！** ✨
+
+[![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![PyPI version](https://badge.fury.io/py/findaledge.svg)](https://badge.fury.io/py/findaledge) <!-- PyPI名が一致すると仮定 -->
 
 ---
 
-## 🤔 FinderLedgeを選ぶ理由
+[🇬🇧 Click here for English README (英語版 README はこちら)](README.md)
 
-Retrieval-Augmented Generation (RAG) は、多くの場合、異なる検索戦略を組み合わせることで効果を発揮します:
+---
 
-*   **ベクトル検索:** 意味的な類似性（類似した*意味*を持つドキュメントを見つける）に優れています。
-*   **キーワード検索 (BM25など):** 特定の用語やフレーズを含むドキュメントを見つけるのに優れています。
+## 🤔 なぜ FindaLedge？
 
-しかし、複数のリトリーバーをセットアップし、それらのインデックスを管理し、結果を統合（Reciprocal Rank Fusion - RRF）するのは、面倒で複雑な作業になりがちです。😩
+RAGシステムは、単一の検索方法だけでは苦戦することがよくあります。ベクトル検索は意味的な類似性に優れていますが、特定のキーワードや略語を見逃す可能性があります。キーワード検索は完全一致を見つけますが、意図を理解することはできません。
 
-**FinderLedgeなら、それがとても簡単になります！** ✨ ChromaやFAISSのようなベクトルストアとBM25のようなキーワードストアを自動的に設定します。ドキュメントを追加するだけで、強力なハイブリッド検索を単一のコマンドで実行できます。検索システムの基盤部分ではなく、アプリケーション本体の開発に集中しましょう！🚀
+両方を組み合わせた**アンサンブル検索**は、より高い精度を提供します。しかし、その構築には以下の要素を扱う必要があります：
 
-## 🚀 主な機能
+*   複数のデータベース（Chroma/FAISSのようなベクトルDB、BM25のようなキーワードインデックス）
+*   ドキュメントの読み込み、解析、チャンキングのパイプライン
+*   埋め込み（Embedding）の生成と管理
+*   ストア間での追加/削除の同期
+*   複雑な結果マージロジック（Reciprocal Rank Fusion - RRF など）
 
-*   **簡単な初期化:** 適切なデフォルト設定（Chroma + BM25）で、1行で開始できます。
-*   **柔軟な設定:** ベクトルストア（Chroma, FAISS）、キーワードストア（BM25）、埋め込みモデル（OpenAI, Ollamaなど）、永続化パスを簡単に変更できます。
-*   **シンプルなドキュメント読み込み:** ファイルやディレクトリ全体からドキュメントを追加。ファイルタイプを自動検出し、解析します（LangChainドキュメントローダーを利用）。
-*   **組み込みの分割:** コンテンツタイプに基づいてドキュメントを適切なチャンクに自動的に分割します。
-*   **ハイブリッド検索 (RRF):** デフォルトでベクトル検索とキーワード検索を同時に実行し、Reciprocal Rank Fusion (RRF) を使用して結果をインテリジェントに結合します。
-*   **単一検索モード:** ベクトル検索のみ、またはキーワード検索のみを使用するオプションもあります。
-*   **LangChain連携:** 一般的なLangChainコンポーネント上に構築されています。
+🤯 **扱うのが大変です！**
 
-## 🛠️ インストール
+**FindaLedge** は、このすべての面倒な作業を**シンプルで統一されたインターフェース**で引き受けます。あなたはLLMアプリケーションに集中でき、FindaLedgeが検索バックエンドを管理します。
+
+## ✨ 主な特徴
+
+*   **🎯 簡単なアンサンブル検索:** ハイブリッド検索（ベクトル + キーワード）のパワーをすぐに利用可能。
+*   **🔌 柔軟なコンポーネント:** 環境変数や引数を通じて、ベクトルストア (`Chroma`, `FAISS`)、キーワードストア (`BM25`)、埋め込みモデル (`OpenAI`, `Ollama`, `SentenceTransformers`) を簡単に設定。
+*   **📚 手間いらずのドキュメント取り込み:** ファイルやディレクトリ全体（`.md`, `.txt`, `.pdf`, `.docx` など）から、単一のコマンド (`add_document`) でドキュメントを追加。自動解析とチャンキングも含まれます！
+*   **🔄 自動インデックス作成と永続化:** インデックス（ベクトルとキーワード）は自動的に作成、更新され、ローカルに保存されます。次回の実行時には即座にロード！
+*   **🥇 スマートな結果マージ:** デフォルトで Reciprocal Rank Fusion (RRF) を使用し、異なる検索方法からの結果を賢く組み合わせてランク付け。
+*   **🔗 シームレスなLangChain連携:** FindaLedgeをLangChainの `BaseRetriever` として直接使用 (`as_retriever()`) し、既存のチェーン（`RetrievalQA`など）に組み込み可能。
+*   **🧹 シンプルな追加/削除:** 新しいドキュメントを簡単に追加したり、既存のドキュメントを削除 (`remove_document`) したりでき、インデックスも自動で更新。
+
+## ⚙️ サポート環境
+
+*   **Python:** 3.10 以上
+*   **OS:** Windows, macOS, Linux でテスト済み
+*   **依存関係:** `pyproject.toml` を参照。主要なものには `langchain`, `bm25s-j`, `numpy`, `chromadb` (オプション), `faiss-cpu` (オプション), `sentence-transformers` (オプション), `openai` (オプション), `ollama` (オプション) が含まれます。
+
+## 🚀 はじめに
+
+### 1. インストール
 
 ```bash
-# pipを使用する場合
-pip install finderledge
+pip install findaledge
 
-# またはuvを使用する場合
-uv pip install finderledge
-
-# 特定機能のためのオプション依存関係をインストール (例: OpenAI埋め込み)
-pip install finderledge[openai]
-# または
-uv pip install finderledge[openai]
+# または、FAISSなどのオプション依存関係を使用する場合:
+# pip install findaledge[faiss] # 例、pyproject.tomlに基づいて調整
 ```
 
-## 💻 基本的な使い方
+選択したベクトルストアと埋め込みモデルに必要な依存関係（例：`pip install chromadb openai sentence-transformers`）があることを確認してください。
+
+### 2. 設定（環境変数）
+
+環境変数を設定します（オプション、デフォルト値が提供されます）：
+
+```bash
+export OPENAI_API_KEY="your-openai-key" # OpenAI埋め込みを使用する場合
+export FINDALEDGE_PERSIST_DIRECTORY="./my_findaledge_data" # インデックスデータの保存場所
+export FINDALEDGE_VECTOR_STORE_PROVIDER="chroma"       # "chroma" または "faiss"
+export FINDALEDGE_EMBEDDING_PROVIDER="openai"          # "openai", "ollama", "huggingface"
+export FINDALEDGE_EMBEDDING_MODEL_NAME="text-embedding-3-small" # モデル名
+# export OLLAMA_BASE_URL="http://localhost:11434" # Ollamaを使用する場合
+```
+
+### 3. 基本的な使い方
 
 ```python
-from finderledge import FinderLedge
-import os
+from findaledge import FindaLedge
+from langchain_core.documents import Document
 
-# --- 設定 (オプション: 環境変数を設定) ---
-# os.environ["OPENAI_API_KEY"] = "your-openai-api-key"
-# os.environ["FINDERLEDGE_PERSIST_DIRECTORY"] = "./my_data_store"
-# os.environ["FINDERLEDGE_VECTOR_STORE"] = "faiss" # 例: Chromaの代わりにFAISSを使用
-# os.environ["FINDERLEDGE_EMBEDDING_PROVIDER"] = "openai"
+# FindaLedgeを初期化（渡されない場合は環境変数またはデフォルトを使用）
+# persist_directoryから既存のデータを自動ロードするか、新しいインデックスを作成します。
+ledge = FindaLedge(
+    # ここで環境変数を上書きできます、例：
+    # persist_directory="./custom_data",
+    # vector_store_provider="faiss"
+)
 
-# --- 初期化 ---
-# デフォルト設定、または設定されていれば環境変数を使用
-# デフォルト: Chromaベクトルストア, BM25キーワードストア, SentenceTransformer埋め込み
-print("FinderLedgeを初期化中...")
-ledge = FinderLedge()
-print("FinderLedge 初期化完了!")
+# --- ドキュメントの追加 ---
 
-# --- ドキュメントの追加 --- 
-# 例のためのダミーファイルを作成
-docs_dir = "example_docs"
-os.makedirs(docs_dir, exist_ok=True)
-with open(os.path.join(docs_dir, "doc1.txt"), "w") as f:
-    f.write("これはリンゴに関する最初のドキュメントの内容です。")
-with open(os.path.join(docs_dir, "doc2.md"), "w") as f:
-    f.write("# オレンジ\nオレンジは柑橘系の果物です。")
+# ファイルパスから追加（拡張子に基づいて自動解析）
+print("ファイルを追加中...")
+ledge.add_document("path/to/your/report.md")
 
-print(f"{docs_dir} からドキュメントを追加中...")
-# 単一ファイルの追加
-# ledge.add_document(os.path.join(docs_dir, "doc1.txt")) 
-# ディレクトリ内のサポートされている全ファイルを追加 (デフォルトで再帰的)
-ledge.add_document(docs_dir)
-print("ドキュメント追加完了!")
+# ディレクトリから互換性のあるすべてのファイルを追加（再帰的）
+print("ディレクトリを追加中...")
+ledge.add_document("path/to/your/docs_folder/")
 
-# --- 検索 --- 
-query = "果物について教えて"
-print(f"\n検索クエリ: '{query}'")
-# デフォルトでハイブリッド検索 (ベクトル + キーワード + RRF) を実行
+# LangChainのDocumentオブジェクトを直接追加
+print("Documentオブジェクトを追加中...")
+doc = Document(page_content="これはサンプルドキュメントです。", metadata={"source": "manual", "id": "manual-doc-1"})
+ledge.add_document(doc)
+
+print("ドキュメントが追加されました！")
+
+# --- ドキュメントの検索 ---
+
+query = "レポートの主なトピックは何ですか？"
+print(f"\n検索中: '{query}'")
+
+# ハイブリッド検索（デフォルト）
 results = ledge.search(query, top_k=3)
 
 print("\n検索結果:")
-if results:
-    for i, doc in enumerate(results):
-        print(f"--- 結果 {i+1} ---")
-        # RRFスコア
-        print(f"  スコア: {doc.metadata.get('relevance_score', 'N/A'):.4f}") 
-        print(f"  ソース: {doc.metadata.get('source', 'N/A')}")
-        # 分割されている場合は親の内容、そうでなければチャンクの内容を表示
-        parent_content = doc.metadata.get("parent_content", doc.page_content) 
-        # 内容の一部を表示
-        print(f"  内容: {parent_content[:150]}...") 
-else:
-    print("検索結果が見つかりませんでした。")
+for i, doc in enumerate(results):
+    print(f"{i+1}. スコア: {doc.metadata.get('relevance_score', 0):.4f} | ソース: {doc.metadata.get('source', 'N/A')}")
+    # print(f"   コンテンツ: {doc.page_content[:150]}...") # コンテンツを表示する場合はコメント解除
 
-# --- ダミーファイルのクリーンアップ (オプション) ---
-# import shutil
-# shutil.rmtree(docs_dir)
+# --- LangChain Retriever として使用 ---
 
-```
+print("\nLangChain Retrieverとして使用中...")
+retriever = ledge.as_retriever(search_mode="hybrid", top_k=5)
 
-## ⚙️ 高度な設定
+# このretrieverを任意のLangChainコンポーネントで使用します、例：RetrievalQA
+from langchain.chains import RetrievalQA
+from langchain_openai import ChatOpenAI # 例：LLM
 
-環境変数または初期化時の引数を通じて、FinderLedgeを詳細に設定できます:
-
-```python
-# 例: FAISSベクトルストアとOpenAI埋め込みで初期化
-ledge_advanced = FinderLedge(
-    vector_store_provider="faiss",        # FAISSを使用
-    keyword_store_provider="bm25",        # BM25を維持
-    embedding_provider="openai",          # 埋め込みにOpenAIを使用
-    embedding_model_name="text-embedding-3-small", # モデルを指定
-    persist_directory="./my_faiss_store" # カスタム永続化パス
-    # chunk_size=500,                    # オプション: カスタムチャンクサイズ
-    # chunk_overlap=50                    # オプション: カスタムチャンクオーバーラップ
+qa_chain = RetrievalQA.from_chain_type(
+    llm=ChatOpenAI(model="gpt-3.5-turbo"),
+    retriever=retriever,
+    return_source_documents=True
 )
 
-# ベクトルモードのみを使用して検索
-results_vector = ledge_advanced.search(query, search_mode="vector", top_k=2)
+response = qa_chain.invoke({"query": query})
+print("\nLangChain QA 回答:", response["result"])
+
+# --- ドキュメントの削除（例） ---
+# 親ドキュメントIDが必要です。多くの場合、ソースパスまたは提供したIDです。
+# doc_id_to_remove = "manual-doc-1" # add_documentの結果またはメタデータから取得
+# print(f"\nドキュメントを削除中: {doc_id_to_remove}")
+# ledge.remove_document(doc_id_to_remove)
+# print("ドキュメントが削除されました。")
+
 ```
 
-利用可能なすべてのオプションについては、`FinderLedge` クラスのドキュメントを参照してください。
+## 📖 ドキュメンテーション
 
-## 🌍 サポート環境
+*   [Usage Guide (使い方ガイド)](docs/usage_guide.md)
+*   [Architecture (アーキテクチャ設計書)](docs/architecture.md)
+*   [Requirements (要件定義書)](docs/requirements.md)
+*   [Function Specification (機能仕様書)](docs/function_spec.md)
 
-*   🐍 Python 3.10+
+## 🤝 コントリビューション
 
-## 🙏 コントリビューション
+コントリビューションを歓迎します！ issue やプルリクエストを気軽にご提出ください。
 
-コントリビューションを歓迎します！ issue やプルリクエストはお気軽に送信してください。
+1.  リポジトリをフォークします。
+2.  新しいブランチを作成します (`git checkout -b feature/your-feature`)。
+3.  変更を加えます。
+4.  テストを実行します (`pytest`)。
+5.  変更をコミットします (`git commit -am 'Add some feature'`)。
+6.  ブランチにプッシュします (`git push origin feature/your-feature`)。
+7.  新しいプルリクエストを作成します。
 
 ## 📜 ライセンス
 
-FinderLedge は [MITライセンス](LICENSE) の下でライセンスされています。 
+このプロジェクトはMITライセンスの下でライセンスされています - 詳細については [LICENSE](LICENSE) ファイルを参照してください。 

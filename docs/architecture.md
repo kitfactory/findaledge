@@ -1,12 +1,12 @@
-# FinderLedge アーキテクチャ設計書
+# FindaLedge アーキテクチャ設計書
 
 ## 1. システム構成・アーキテクチャの概要
 
-FinderLedge は、RAG アプリケーションにおけるアンサンブル検索の複雑さを隠蔽し、シンプルなインターフェースを提供することに主眼を置いています。内部的には LangChain のコンポーネントを組み合わせ、設定に基づいて適切なドキュメントストア（ベクトルストア、キーワードストア）と検索ロジックを管理します。
+FindaLedge は、RAG アプリケーションにおけるアンサンブル検索の複雑さを隠蔽し、シンプルなインターフェースを提供することに主眼を置いています。内部的には LangChain のコンポーネントを組み合わせ、設定に基づいて適切なドキュメントストア（ベクトルストア、キーワードストア）と検索ロジックを管理します。
 
 主要なコンポーネントは以下の通りです：
 
-1.  **`FinderLedge` クラス:** ユーザーが直接操作するメインインターフェース。設定の管理、ドキュメントストアの初期化、文書の追加・削除、検索の実行、LangChain Retriever としての機能提供を担当します。
+1.  **`FindaLedge` クラス:** ユーザーが直接操作するメインインターフェース。設定の管理、ドキュメントストアの初期化、文書の追加・削除、検索の実行、LangChain Retriever としての機能提供を担当します。
 2.  **ドキュメントストア (`DocumentStore`):**
     *   `VectorDocumentStore` (抽象基底クラス): ベクトル検索のための共通ロジック（文書分割など）を提供。
         *   `ChromaDocumentStore`: ChromaDB をバックエンドとする実装。
@@ -21,8 +21,8 @@ FinderLedge は、RAG アプリケーションにおけるアンサンブル検�
 @startuml
 !theme plain
 
-package "FinderLedge Core" {
-  class FinderLedge {
+package "FindaLedge Core" {
+  class FindaLedge {
     + __init__(...)
     + add_document(path_or_doc)
     + remove_document(doc_id)

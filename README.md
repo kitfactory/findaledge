@@ -1,139 +1,167 @@
-# FinderLedge 🧭✨
+# 🚀 FindaLedge: Simple Ensemble Search for RAG 🔍
 
-**Effortlessly build powerful ensemble retrieval systems for your RAG applications!**
+**FindaLedge** is a Python library designed to simplify the creation and management of **ensemble search systems** for Retrieval-Augmented Generation (RAG) applications. It elegantly combines vector search and keyword search, abstracting away the complexities of setting up multiple document stores (like Chroma, FAISS, BM25), handling document ingestion, managing indices, and merging search results (using RRF).
 
-FinderLedge simplifies the process of setting up and managing multiple document retrieval methods (like vector search and keyword search) and combining their results for more relevant and robust RAG context generation.
+✨ **Build powerful RAG search backends with ease!** ✨
 
-[![PyPI version](https://badge.fury.io/py/finderledge.svg)](https://badge.fury.io/py/finderledge)
+[![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![PyPI version](https://badge.fury.io/py/findaledge.svg)](https://badge.fury.io/py/findaledge)
 
----
+--- 
 
-## 🤔 Why FinderLedge?
+[🇯🇵 日本語版 README はこちら (Click here for Japanese README)](README_ja.md)
 
-Retrieval-Augmented Generation (RAG) often benefits from combining different search strategies:
+--- 
 
-*   **Vector Search:** Great for semantic similarity (finding documents with similar *meaning*).
-*   **Keyword Search (like BM25):** Excels at finding documents containing specific terms or phrases.
+## 🤔 Why FindaLedge?
 
-Setting up multiple retrievers, managing their indices, and combining (reciprocal rank fusion - RRF) their results can be tedious and complex. 😩
+RAG systems often struggle with a single search method. Vector search excels at semantic similarity but might miss specific keywords or acronyms. Keyword search finds exact matches but lacks understanding of intent.
 
-**FinderLedge makes it super simple!** ✨ It automatically configures vector stores (like Chroma or FAISS) and keyword stores (BM25) for you. Just add your documents, and perform powerful hybrid searches with a single command. Focus on your application, not the retrieval plumbing! 🚀
+**Ensemble search**, combining both, offers superior accuracy. However, building it involves juggling:
 
-## 🚀 Features
+*   Multiple databases (Vector DBs like Chroma/FAISS, Keyword indices like BM25)
+*   Document loading, parsing, and chunking pipelines
+*   Embedding generation and management
+*   Synchronizing additions/deletions across stores
+*   Complex result merging logic (like Reciprocal Rank Fusion - RRF)
 
-*   **Easy Initialization:** Get started with sensible defaults (Chroma + BM25) in one line.
-*   **Flexible Configuration:** Easily swap vector stores (Chroma, FAISS), keyword stores (BM25), embedding models (OpenAI, Ollama, etc.), and persistence paths.
-*   **Simple Document Loading:** Add documents from files or entire directories with automatic file type detection and parsing (powered by LangChain document loaders).
-*   **Built-in Splitting:** Automatically splits documents into appropriate chunks based on content type.
-*   **Hybrid Search (RRF):** Performs vector and keyword searches simultaneously and intelligently combines results using Reciprocal Rank Fusion (RRF) by default.
-*   **Pure Search Modes:** Option to use only vector search or only keyword search.
-*   **LangChain Integration:** Built on top of popular LangChain components.
+🤯 **It's a lot to handle!**
 
-## 🛠️ Installation
+**FindaLedge** takes care of all this heavy lifting with a **simple, unified interface**. You focus on your LLM application, while FindaLedge manages the search backend.
+
+## ✨ Key Features
+
+*   **🎯 Easy Ensemble Search:** Get the power of hybrid search (vector + keyword) out-of-the-box.
+*   **🔌 Flexible Components:** Easily configure vector stores (`Chroma`, `FAISS`), keyword stores (`BM25`), and embedding models (`OpenAI`, `Ollama`, `SentenceTransformers`) via environment variables or arguments.
+*   **📚 Effortless Document Ingestion:** Add documents from files or entire directories (`.md`, `.txt`, `.pdf`, `.docx`, etc.) with a single command (`add_document`). Automatic parsing and chunking included!
+*   **🔄 Automatic Indexing & Persistence:** Indices (vector and keyword) are automatically created, updated, and saved locally. Load them instantly on the next run!
+*   **🥇 Smart Result Merging:** Uses Reciprocal Rank Fusion (RRF) by default to intelligently combine and rank results from different search methods.
+*   **🔗 Seamless LangChain Integration:** Use FindaLedge directly as a LangChain `BaseRetriever` (`as_retriever()`) in your existing chains (like `RetrievalQA`).
+*   **🧹 Simple Add/Remove:** Easily add new documents or remove existing ones (`remove_document`) with automatic index updates.
+
+## ⚙️ Supported Environment
+
+*   **Python:** 3.10 or higher
+*   **OS:** Tested on Windows, macOS, Linux
+*   **Dependencies:** See `pyproject.toml`. Key ones include `langchain`, `bm25s-j`, `numpy`, `chromadb` (optional), `faiss-cpu` (optional), `sentence-transformers` (optional), `openai` (optional), `ollama` (optional).
+
+## 🚀 Getting Started
+
+### 1. Installation
 
 ```bash
-# Using pip
-pip install finderledge
+pip install findaledge
 
-# Or using uv
-uv pip install finderledge
-
-# Install optional dependencies for specific features (e.g., OpenAI embeddings)
-pip install finderledge[openai]
-# or
-uv pip install finderledge[openai]
+# Or, if using optional dependencies like FAISS:
+# pip install findaledge[faiss] # Example, adjust based on pyproject.toml
 ```
 
-## 💻 Basic Usage
+Make sure you have necessary dependencies for your chosen vector store and embedding model (e.g., `pip install chromadb openai sentence-transformers`).
+
+### 2. Configuration (Environment Variables)
+
+Set environment variables (optional, defaults are provided):
+
+```bash
+export OPENAI_API_KEY="your-openai-key" # If using OpenAI embeddings
+export FINDALEDGE_PERSIST_DIRECTORY="./my_findaledge_data" # Where to save index data
+export FINDALEDGE_VECTOR_STORE_PROVIDER="chroma"       # "chroma" or "faiss"
+export FINDALEDGE_EMBEDDING_PROVIDER="openai"          # "openai", "ollama", "huggingface"
+export FINDALEDGE_EMBEDDING_MODEL_NAME="text-embedding-3-small" # Model name
+# export OLLAMA_BASE_URL="http://localhost:11434" # If using Ollama
+```
+
+### 3. Basic Usage
 
 ```python
-from finderledge import FinderLedge
-import os
+from findaledge import FindaLedge
+from langchain_core.documents import Document
 
-# --- Configuration (Optional: Set environment variables) ---
-# os.environ["OPENAI_API_KEY"] = "your-openai-api-key"
-# os.environ["FINDERLEDGE_PERSIST_DIRECTORY"] = "./my_data_store"
-# os.environ["FINDERLEDGE_VECTOR_STORE"] = "faiss" # Example: Use FAISS instead of Chroma
-# os.environ["FINDERLEDGE_EMBEDDING_PROVIDER"] = "openai"
+# Initialize FindaLedge (uses env vars or defaults if not passed)
+# It automatically loads existing data from persist_directory or creates new indices.
+ledge = FindaLedge(
+    # You can override env vars here, e.g.:
+    # persist_directory="./custom_data",
+    # vector_store_provider="faiss"
+)
 
-# --- Initialization ---
-# Uses defaults or environment variables if set
-# Default: Chroma vector store, BM25 keyword store, SentenceTransformer embeddings
-print("Initializing FinderLedge...")
-ledge = FinderLedge()
-print("FinderLedge Initialized!")
+# --- Add Documents ---
 
-# --- Add Documents --- 
-# Create dummy files for the example
-docs_dir = "example_docs"
-os.makedirs(docs_dir, exist_ok=True)
-with open(os.path.join(docs_dir, "doc1.txt"), "w") as f:
-    f.write("This is the content of the first document about apples.")
-with open(os.path.join(docs_dir, "doc2.md"), "w") as f:
-    f.write("# Oranges\nOranges are a citrus fruit.")
+# Add from a file path (auto-parses based on extension)
+print("Adding file...")
+ledge.add_document("path/to/your/report.md")
 
-print(f"Adding documents from {docs_dir}...")
-# Add a single file
-# ledge.add_document(os.path.join(docs_dir, "doc1.txt")) 
-# Add all supported files in a directory (recursive by default)
-ledge.add_document(docs_dir)
+# Add all compatible files from a directory (recursively)
+print("Adding directory...")
+ledge.add_document("path/to/your/docs_folder/")
+
+# Add a LangChain Document object directly
+print("Adding Document object...")
+doc = Document(page_content="This is a sample document.", metadata={"source": "manual", "id": "manual-doc-1"})
+ledge.add_document(doc)
+
 print("Documents added!")
 
-# --- Search --- 
-query = "Tell me about fruit"
+# --- Search Documents ---
+
+query = "What is the main topic of the report?"
 print(f"\nSearching for: '{query}'")
-# Performs hybrid search (vector + keyword + RRF) by default
+
+# Hybrid search (default)
 results = ledge.search(query, top_k=3)
 
 print("\nSearch Results:")
-if results:
-    for i, doc in enumerate(results):
-        print(f"--- Result {i+1} ---")
-        print(f"  Score: {doc.metadata.get('relevance_score', 'N/A'):.4f}") # RRF Score
-        print(f"  Source: {doc.metadata.get('source', 'N/A')}")
-        # Displaying parent doc content if split, otherwise the content itself
-        parent_content = doc.metadata.get("parent_content", doc.page_content) 
-        print(f"  Content: {parent_content[:150]}...") # Show limited content
-else:
-    print("No results found.")
+for i, doc in enumerate(results):
+    print(f"{i+1}. Score: {doc.metadata.get('relevance_score', 0):.4f} | Source: {doc.metadata.get('source', 'N/A')}")
+    # print(f"   Content: {doc.page_content[:150]}...") # Uncomment to show content
 
-# --- Clean up dummy files (optional) ---
-# import shutil
-# shutil.rmtree(docs_dir)
+# --- Use as LangChain Retriever ---
 
-```
+print("\nUsing as LangChain Retriever...")
+retriever = ledge.as_retriever(search_mode="hybrid", top_k=5)
 
-## ⚙️ Advanced Configuration
+# Now use this retriever in any LangChain component, e.g., RetrievalQA
+from langchain.chains import RetrievalQA
+from langchain_openai import ChatOpenAI # Example LLM
 
-You can configure FinderLedge extensively via environment variables or directly during initialization:
-
-```python
-# Example: Initialize with FAISS vector store and OpenAI embeddings
-ledge_advanced = FinderLedge(
-    vector_store_provider="faiss",        # Use FAISS
-    keyword_store_provider="bm25",        # Keep BM25
-    embedding_provider="openai",          # Use OpenAI for embeddings
-    embedding_model_name="text-embedding-3-small", # Specify model
-    persist_directory="./my_faiss_store" # Custom persistence path
-    # chunk_size=500,                    # Optional: Custom chunk size
-    # chunk_overlap=50                    # Optional: Custom chunk overlap
+qa_chain = RetrievalQA.from_chain_type(
+    llm=ChatOpenAI(model="gpt-3.5-turbo"),
+    retriever=retriever,
+    return_source_documents=True
 )
 
-# Search using only vector mode
-results_vector = ledge_advanced.search(query, search_mode="vector", top_k=2)
+response = qa_chain.invoke({"query": query})
+print("\nLangChain QA Answer:", response["result"])
+
+# --- Remove a Document (Example) ---
+# You need the parent document ID. Often the source path or an ID you provided.
+# doc_id_to_remove = "manual-doc-1" # Get this from add_document result or metadata
+# print(f"\nRemoving document: {doc_id_to_remove}")
+# ledge.remove_document(doc_id_to_remove)
+# print("Document removed.")
+
 ```
 
-See the `FinderLedge` class documentation for all available options.
+## 📖 Documentation
 
-## 🌍 Supported Environment
+*   [Usage Guide (使い方ガイド)](docs/usage_guide.md)
+*   [Architecture (アーキテクチャ設計書)](docs/architecture.md)
+*   [Requirements (要件定義書)](docs/requirements.md)
+*   [Function Specification (機能仕様書)](docs/function_spec.md)
 
-*   🐍 Python 3.10+
-
-## 🙏 Contributing
+## 🤝 Contributing
 
 Contributions are welcome! Please feel free to submit issues or pull requests.
 
+1.  Fork the repository.
+2.  Create a new branch (`git checkout -b feature/your-feature`).
+3.  Make your changes.
+4.  Run tests (`pytest`).
+5.  Commit your changes (`git commit -am 'Add some feature'`).
+6.  Push to the branch (`git push origin feature/your-feature`).
+7.  Create a new Pull Request.
+
 ## 📜 License
 
-FinderLedge is licensed under the [MIT License](LICENSE).
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

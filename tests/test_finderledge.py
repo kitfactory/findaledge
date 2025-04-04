@@ -11,16 +11,16 @@ from langchain_core.embeddings import FakeEmbeddings
 from langchain_core.retrievers import BaseRetriever
 
 # Classes to test and mock
-from finderledge.finderledge import FinderLedge
-from finderledge.finder import Finder, SearchResult
-from finderledge.document_loader import DocumentLoader
-from finderledge.document_splitter import DocumentSplitter, DocumentType
-from finderledge.document_store.vector_document_store import VectorDocumentStore
-from finderledge.document_store.bm25s import BM25sStore
-from finderledge.embeddings_factory import EmbeddingModelFactory
+from findaledge.finderledge import FinderLedge
+from findaledge.finder import Finder, SearchResult
+from findaledge.document_loader import DocumentLoader
+from findaledge.document_splitter import DocumentSplitter, DocumentType
+from findaledge.document_store.vector_document_store import VectorDocumentStore
+from findaledge.document_store.bm25s import BM25sStore
+from findaledge.embeddings_factory import EmbeddingModelFactory
 
 # Import the module to use in mocker.patch(where=...)
-import src.finderledge.finderledge
+import src.findaledge.finderledge
 
 # --- Test Fixtures ---
 
@@ -35,12 +35,12 @@ def mock_components(mocker, mock_embedding_model, tmp_path):
     """Mocks all components used by FinderLedge."""
     # Mock Factory's static method create_embeddings
     mock_create_embeddings = mocker.patch(
-        'finderledge.finderledge.EmbeddingModelFactory.create_embeddings',
+        'findaledge.finderledge.EmbeddingModelFactory.create_embeddings',
         return_value=mock_embedding_model
     )
 
     # Mock DocumentLoader instance and its methods
-    mock_loader_cls = mocker.patch('finderledge.finderledge.DocumentLoader', autospec=True)
+    mock_loader_cls = mocker.patch('findaledge.finderledge.DocumentLoader', autospec=True)
     mock_loader = mock_loader_cls.return_value
     # Define return values for the actual methods
     mock_loader.load_file.return_value = LangchainDocument(page_content="Loaded single file", metadata={'source': 'file1.txt'})
@@ -50,7 +50,7 @@ def mock_components(mocker, mock_embedding_model, tmp_path):
     ]
 
     # Mock DocumentSplitter
-    mock_splitter = mocker.patch('finderledge.finderledge.DocumentSplitter', autospec=True)
+    mock_splitter = mocker.patch('findaledge.finderledge.DocumentSplitter', autospec=True)
     mock_splitter.return_value.split_documents.side_effect = lambda docs: [ # Simulate splitting each doc into 2 chunks
         LangchainDocument(page_content=f"{d.page_content} chunk 1", metadata={**d.metadata, 'id': f"{d.metadata.get('source','id')}-0"}) for d in docs
     ] + [
@@ -58,7 +58,7 @@ def mock_components(mocker, mock_embedding_model, tmp_path):
     ]
 
     # Mock VectorDocumentStore
-    mock_vector_store_cls = mocker.patch('finderledge.finderledge.VectorDocumentStore', autospec=True)
+    mock_vector_store_cls = mocker.patch('findaledge.finderledge.VectorDocumentStore', autospec=True)
     mock_vector_store = mock_vector_store_cls.return_value
     mock_vector_store.add_documents.return_value = ["vec-id-1", "vec-id-2"]
     mock_vector_store.delete_document.return_value = None
@@ -71,7 +71,7 @@ def mock_components(mocker, mock_embedding_model, tmp_path):
     mock_vector_store.as_retriever.return_value = mock_vector_retriever
 
     # Mock BM25sStore
-    mock_bm25_store_cls = mocker.patch('finderledge.finderledge.BM25sStore', autospec=True)
+    mock_bm25_store_cls = mocker.patch('findaledge.finderledge.BM25sStore', autospec=True)
     mock_bm25_store = mock_bm25_store_cls.return_value
     mock_bm25_store.add_documents.return_value = ["bm25-id-1", "bm25-id-2"]
     mock_bm25_store.delete_document.return_value = None
@@ -84,7 +84,7 @@ def mock_components(mocker, mock_embedding_model, tmp_path):
     mock_bm25_store.as_retriever.return_value = mock_bm25_retriever
 
     # Mock Finder (RRF)
-    mock_finder_cls = mocker.patch('finderledge.finderledge.Finder', autospec=True)
+    mock_finder_cls = mocker.patch('findaledge.finderledge.Finder', autospec=True)
     mock_finder = mock_finder_cls.return_value
     mock_finder.search.return_value = [
         SearchResult(document=LangchainDocument(page_content="Hybrid result 1", metadata={'id': 'hr-1'}), score=0.05),
@@ -187,9 +187,9 @@ def test_finderledge_init_custom_params(mock_components, tmp_path):
 
 def test_finderledge_init_env_vars(mock_components, tmp_path, monkeypatch):
     """Test environment variables override defaults during initialization."""
-    monkeypatch.setenv("FINDERLEDGE_EMBEDDING_MODEL_NAME", "env-model")
-    monkeypatch.setenv("FINDERLEDGE_CHROMA_SUBDIR", "env_vector")
-    monkeypatch.setenv("FINDERLEDGE_BM25S_SUBDIR", "env_bm25")
+    monkeypatch.setenv("FINDALEDGE_EMBEDDING_MODEL_NAME", "env-model")
+    monkeypatch.setenv("FINDALEDGE_CHROMA_SUBDIR", "env_vector")
+    monkeypatch.setenv("FINDALEDGE_BM25S_SUBDIR", "env_bm25")
 
     persist_dir = tmp_path / "env_data"
     ledge = FinderLedge(persist_dir=str(persist_dir))
@@ -314,7 +314,7 @@ def test_finderledge_search_invalid_mode(mock_components, tmp_path):
 
 def test_finderledge_search_default_mode_env_var(mock_components, tmp_path, monkeypatch):
     """Test that the default search mode is taken from environment variable."""
-    monkeypatch.setenv("FINDERLEDGE_DEFAULT_SEARCH_MODE", "vector")
+    monkeypatch.setenv("FINDALEDGE_DEFAULT_SEARCH_MODE", "vector")
     ledge = FinderLedge(persist_dir=str(tmp_path / "search_env"))
 
     ledge.search("query using env default") # No search_mode specified

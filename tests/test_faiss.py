@@ -7,7 +7,7 @@ import pytest
 from pathlib import Path
 from unittest.mock import MagicMock, patch, ANY
 from langchain.schema import Document
-from finderledge.document_store.faiss import FAISSDocumentStore
+from findaledge.document_store.faiss import FAISSDocumentStore
 
 class MockEmbeddings:
     """Mock embeddings for testing"""
@@ -37,7 +37,7 @@ def mock_faiss():
 def store(mock_faiss, tmp_path):
     """Create test document store instance"""
     persist_dir = tmp_path / "faiss_index"
-    with patch('finderledge.document_store.faiss.FAISS', autospec=True) as mock_faiss_class:
+    with patch('findaledge.document_store.faiss.FAISS', autospec=True) as mock_faiss_class:
         mock_faiss_class.load_local.return_value = mock_faiss
         mock_faiss_class.from_embeddings.return_value = mock_faiss
 
@@ -53,7 +53,7 @@ def test_initialization(mock_faiss, tmp_path):
     persist_dir = tmp_path / "faiss_index"
     assert not persist_dir.exists()
 
-    with patch('finderledge.document_store.faiss.FAISS', autospec=True) as mock_faiss_class:
+    with patch('findaledge.document_store.faiss.FAISS', autospec=True) as mock_faiss_class:
         mock_faiss_class.from_embeddings.return_value = mock_faiss
         store = FAISSDocumentStore(
             embedding_function=MockEmbeddings(),
@@ -69,7 +69,7 @@ def test_initialization_with_persistence(mock_faiss, tmp_path):
     persist_dir = tmp_path / "faiss_index"
     persist_dir.mkdir()
 
-    with patch('finderledge.document_store.faiss.FAISS', autospec=True) as mock_faiss_class:
+    with patch('findaledge.document_store.faiss.FAISS', autospec=True) as mock_faiss_class:
         mock_faiss_class.load_local.return_value = mock_faiss
         store = FAISSDocumentStore(
             embedding_function=MockEmbeddings(),
@@ -220,7 +220,7 @@ def test_persistence_error_handling(mock_faiss, tmp_path):
     persist_dir = tmp_path / "faiss_index"
     persist_dir.mkdir()
 
-    with patch('finderledge.document_store.faiss.FAISS', autospec=True) as mock_faiss_class:
+    with patch('findaledge.document_store.faiss.FAISS', autospec=True) as mock_faiss_class:
         mock_faiss_class.load_local.side_effect = Exception("Load error")
         mock_faiss_class.from_embeddings.return_value = mock_faiss
 

@@ -1,10 +1,12 @@
-import pytest
+import sys
 from pathlib import Path
 import os
 import shutil # テストディレクトリ作成用
 
 from langchain.schema import Document as LangchainDocument
-from finderledge.document_loader import DocumentLoader
+from findaledge.document_loader import DocumentLoader
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 # テスト用データディレクトリのパス
 TEST_DATA_DIR = Path(__file__).parent / "data" / "document_loader"

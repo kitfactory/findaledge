@@ -8,7 +8,7 @@ from langchain_core.callbacks.manager import CallbackManagerForRetrieverRun, Asy
 # Pydantic field for default values if needed
 from pydantic.v1 import Field, BaseModel # Use pydantic.v1 if BaseRetriever still uses it internally, or pydantic if updated
 
-from finderledge.finder import Finder, SearchResult
+from findaledge.finder import Finder, SearchResult
 
 # --- Mock Retriever Implementations ---
 

@@ -1,6 +1,6 @@
 """
-Finderledge - A document search and retrieval library
-Finderledge - 文書検索・取得ライブラリ
+Findaledge - A document search and retrieval library
+Findaledge - 文書検索・取得ライブラリ
 
 This library provides functionality for searching and retrieving documents
 using various embedding models and search algorithms.

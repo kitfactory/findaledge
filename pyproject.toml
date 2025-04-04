@@ -3,8 +3,8 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "finderledge"
-version = "0.1.0"
+name = "findaledge"
+version = "0.1.1"
 authors = [
     { name = "Naruhide KITADA", email = "kitfactory@gmail.com" },
 ]
@@ -38,8 +38,8 @@ dependencies = [
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/kitfactory/finderledge"
-"Bug Tracker" = "https://github.com/kitfactory/finderledge/issues"
+"Homepage" = "https://github.com/kitfactory/findaledge"
+"Bug Tracker" = "https://github.com/kitfactory/findaledge/issues"
 
 [project.optional-dependencies]
 dev = [
@@ -62,7 +62,7 @@ python_files = ["test_*.py"]
 pythonpath = ["."]
 addopts = [
     "--import-mode=importlib",
-    "--cov=finderledge",
+    "--cov=findaledge",
     "--cov-report=term-missing",
 ]
 
@@ -84,7 +84,7 @@ disallow_untyped_defs = true
 check_untyped_defs = true
 
 [tool.coverage.run]
-source = ["finderledge"]
+source = ["findaledge"]
 branch = true
 
 [tool.coverage.report]
@@ -105,4 +105,4 @@ omit = [
 ]
 
 [tool.hatch.build]
-packages = ["src/finderledge"]
+packages = ["src/findaledge"]

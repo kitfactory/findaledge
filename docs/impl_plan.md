@@ -1,4 +1,4 @@
-# Implementation Plan for FinderLedge
+# Implementation Plan for FindaLedge
 
 ## 概要 / Overview
 - 本プロジェクトは、OpenAI Agents SDKとの連携を前提に、文書コンテキスト管理ライブラリとして、文書の自動インデックス作成、ハイブリッド検索、文書追加・削除、永続化などの機能を実現する。
@@ -40,7 +40,7 @@
   - [x] `uv add pydantic` - データバリデーション用
   - [x] `uv add markitdown` - オフィス文書処理用（DOCX, XLSX, PPTX, PDF）
 - [x] 開発モードでパッケージ自身をインストール
-  - [x] `uv pip install -e .` - 開発者モードでFinderLedgeをインストール
+  - [x] `uv pip install -e .` - 開発者モードでFindaLedgeをインストール
 - [x] 依存ライブラリが正しくインストールされているか確認
   - [x] 各ライブラリのバージョン情報を確認
 
@@ -75,8 +75,8 @@
 - [x] TextSplitterクラスの実装
 - [x] Implement DocumentLoader class
 - [x] DocumentLoaderクラスの実装
-- [x] Implement FinderLedge class
-- [x] FinderLedgeクラスの実装
+- [x] Implement FindaLedge class
+- [x] FindaLedgeクラスの実装
 
 ### 7. 検索機能の実装 / Search Functionality Implementation
 - [x] ハイブリッド検索機能の実装
@@ -112,8 +112,8 @@
 - [x] TextSplitterクラスのテスト実装
 - [x] Implement DocumentLoader tests
 - [x] DocumentLoaderのテスト実装
-- [x] Implement FinderLedge tests
-- [x] FinderLedgeのテスト実装
+- [x] Implement FindaLedge tests
+- [x] FindaLedgeのテスト実装
 
 ### 12. ドキュメントとコメントの整備 / Documentation and Comments
 - [ ] 全クラスおよびメソッドに対し、英語と日本語のバイリンガルコメントを記述 (docstrings)

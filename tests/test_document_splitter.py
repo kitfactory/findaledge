@@ -3,10 +3,14 @@ Test cases for DocumentSplitter class
 DocumentSplitterクラスのテストケース
 """
 
-import pytest
+import sys
 from pathlib import Path
-from langchain.schema import Document
-from finderledge import DocumentSplitter, DocumentType
+import pytest
+from langchain_core.documents import Document
+from langchain_text_splitters import RecursiveCharacterTextSplitter # Use a concrete class for testing
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from findaledge import DocumentSplitter, DocumentType
 
 @pytest.fixture
 def splitter():

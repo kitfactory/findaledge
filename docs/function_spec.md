@@ -1,15 +1,15 @@
-# FinderLedge 機能仕様書
+# FindaLedge 機能仕様書
 
-この文書は、`FinderLedge` ライブラリの主要な機能の仕様を定義します。
+この文書は、`FindaLedge` ライブラリの主要な機能の仕様を定義します。
 
-## 1. `FinderLedge` 初期化 (`__init__`)
+## 1. `FindaLedge` 初期化 (`__init__`)
 
 ### 1.1 機能概要
-`FinderLedge` クラスのインスタンスを生成し、設定に基づいて内部コンポーネント（ベクトルストア、キーワードストア、埋め込みモデル、ファインダー等）を初期化します。設定は、環境変数または `__init__` の引数を通じて行われます。
+`FindaLedge` クラスのインスタンスを生成し、設定に基づいて内部コンポーネント（ベクトルストア、キーワードストア、埋め込みモデル、ファインダー等）を初期化します。設定は、環境変数または `__init__` の引数を通じて行われます。
 
 ### 1.2 ユースケース手順
-1.  呼び出し元が `FinderLedge()` または `FinderLedge(**kwargs)` を実行。
-2.  `FinderLedge` は設定（引数、環境変数、デフォルト値）を解決。
+1.  呼び出し元が `FindaLedge()` または `FindaLedge(**kwargs)` を実行。
+2.  `FindaLedge` は設定（引数、環境変数、デフォルト値）を解決。
 3.  `EmbeddingModelFactory.create_embeddings` を呼び出し、設定に基づいた埋め込みモデル (Embeddings) を取得。
 4.  設定に基づいて `VectorDocumentStore` (Chroma または FAISS) のインスタンスを生成（埋め込みモデルと永続化パスを渡す）。ストアは内部でインデックスをロードまたは新規作成。
 5.  設定に基づいて `BM25DocumentStore` のインスタンスを生成（永続化パスを渡す）。ストアは内部でインデックスをロードまたは新規作成。
@@ -21,7 +21,7 @@
 ```plantuml
 @startuml
 actor Caller
-participant "FinderLedge" as Ledge
+participant "FindaLedge" as Ledge
 participant "EmbeddingModelFactory" as EmbedFactory
 participant "VectorDocumentStore\n(Chroma/FAISS)" as VecStore
 participant "BM25DocumentStore" as KWStore
@@ -52,7 +52,7 @@ activate Finder
 Finder --> Ledge : finder
 deactivate Finder
 
-Ledge --> Caller : FinderLedge インスタンス
+Ledge --> Caller : FindaLedge インスタンス
 deactivate Ledge
 @enduml
 ```
@@ -74,10 +74,10 @@ deactivate Ledge
 
 ### 2.2 ユースケース手順
 1.  呼び出し元が `ledge.add_document(path)` を実行。
-2.  `FinderLedge` は LangChain の `DocumentLoader` を使用して `path` から `Document` オブジェクトのリストを作成。
-3.  `FinderLedge` が保持する `VectorDocumentStore` の `add_documents` を呼び出す。
+2.  `FindaLedge` は LangChain の `DocumentLoader` を使用して `path` から `Document` オブジェクトのリストを作成。
+3.  `FindaLedge` が保持する `VectorDocumentStore` の `add_documents` を呼び出す。
 4.  `VectorDocumentStore` は文書をチャンキングし、親と分割チャンクにメタデータを付与して、自身の実装 (`_add_documents`) を呼び出し、ベクトルストア（Chroma/FAISS）にデータを追加・永続化。
-5.  `FinderLedge` が保持する `BM25DocumentStore` の `add_documents` を呼び出す。
+5.  `FindaLedge` が保持する `BM25DocumentStore` の `add_documents` を呼び出す。
 6.  `BM25DocumentStore` は文書のテキストからインデックスを構築・更新し、永続化。
 7.  追加された（親）ドキュメントの ID リストを返す。
 
@@ -86,7 +86,7 @@ deactivate Ledge
 ```plantuml
 @startuml
 actor Caller
-participant "FinderLedge" as Ledge
+participant "FindaLedge" as Ledge
 participant "DocumentLoader" as Loader
 participant "VectorDocumentStore" as VecStore
 participant "BM25DocumentStore" as KWStore
@@ -131,9 +131,9 @@ deactivate Ledge
 
 ### 3.2 ユースケース手順
 1.  呼び出し元が `ledge.remove_document(doc_id)` を実行。
-2.  `FinderLedge` が保持する `VectorDocumentStore` の `remove_document` を呼び出す。
+2.  `FindaLedge` が保持する `VectorDocumentStore` の `remove_document` を呼び出す。
 3.  `VectorDocumentStore` は指定された ID と、それに関連する分割チャンクの ID を特定し、自身の実装 (`_remove_documents`) を呼び出してベクトルストアから削除。
-4.  `FinderLedge` が保持する `BM25DocumentStore` の `remove_document` を呼び出す。
+4.  `FindaLedge` が保持する `BM25DocumentStore` の `remove_document` を呼び出す。
 5.  `BM25DocumentStore` は指定された ID に関連するデータをインデックスから削除し、永続化。
 
 ### 3.3 シーケンス図
@@ -141,7 +141,7 @@ deactivate Ledge
 ```plantuml
 @startuml
 actor Caller
-participant "FinderLedge" as Ledge
+participant "FindaLedge" as Ledge
 participant "VectorDocumentStore" as VecStore
 participant "BM25DocumentStore" as KWStore
 
@@ -178,8 +178,8 @@ deactivate Ledge
 
 ### 4.2 ユースケース手順
 1.  呼び出し元が `ledge.search(query, search_mode, top_k, ...)` を実行。
-2.  `FinderLedge` は内部の `Finder` インスタンスの `search` メソッドを呼び出す。
-3.  `Finder` は `FinderLedge` からベクトルストアとキーワードストアの Retriever を取得。
+2.  `FindaLedge` は内部の `Finder` インスタンスの `search` メソッドを呼び出す。
+3.  `Finder` は `FindaLedge` からベクトルストアとキーワードストアの Retriever を取得。
 4.  指定された `search_mode` に応じて検索を実行:
     *   `hybrid`: Vector Retriever と Keyword Retriever の両方で検索を実行し、それぞれの結果を Reciprocal Rank Fusion (RRF) を用いて統合・ランキング。
     *   `vector`: Vector Retriever のみで検索を実行。
@@ -191,7 +191,7 @@ deactivate Ledge
 ```plantuml
 @startuml
 actor Caller
-participant "FinderLedge" as Ledge
+participant "FindaLedge" as Ledge
 participant "Finder" as Finder
 participant "Vector Retriever" as VecRetriever
 participant "Keyword Retriever" as KWRetriever
@@ -263,7 +263,7 @@ deactivate Ledge
 
 ### 5.2 ユースケース手順
 1.  呼び出し元が `ledge.get_context(query, ...)` を実行。
-2.  `FinderLedge` は内部的に `search` メソッドを呼び出して関連ドキュメントを取得。
+2.  `FindaLedge` は内部的に `search` メソッドを呼び出して関連ドキュメントを取得。
 3.  取得したドキュメントリストから各ドキュメントの `page_content` を抽出。
 4.  抽出したテキストコンテンツを指定されたセパレータ（デフォルトは `\n\n`）で結合。
 5.  結合されたコンテキスト文字列を返す。
@@ -273,7 +273,7 @@ deactivate Ledge
 ```plantuml
 @startuml
 actor Caller
-participant "FinderLedge" as Ledge
+participant "FindaLedge" as Ledge
 
 Caller -> Ledge : get_context(query, ...)
 activate Ledge
@@ -299,24 +299,24 @@ deactivate Ledge
 ## 6. Retriever 取得 (`as_retriever`)
 
 ### 6.1 機能概要
-`FinderLedge` インスタンスを LangChain の `BaseRetriever` インターフェース互換のオブジェクトとして返します。これにより、LangChain の他のコンポーネント（例: `RetrievalQA` チェーン）と容易に統合できます。
+`FindaLedge` インスタンスを LangChain の `BaseRetriever` インターフェース互換のオブジェクトとして返します。これにより、LangChain の他のコンポーネント（例: `RetrievalQA` チェーン）と容易に統合できます。
 
 ### 6.2 ユースケース手順
 1.  呼び出し元が `ledge.as_retriever(**search_kwargs)` を実行。
-2.  `FinderLedge` は、自身をラップする `BaseRetriever` のサブクラスインスタンスを生成して返す。
-3.  返された Retriever の `get_relevant_documents` または `invoke` メソッドが呼び出されると、内部的に `FinderLedge` の `search` メソッドが `search_kwargs` を用いて実行される。
+2.  `FindaLedge` は、自身をラップする `BaseRetriever` のサブクラスインスタンスを生成して返す。
+3.  返された Retriever の `get_relevant_documents` または `invoke` メソッドが呼び出されると、内部的に `FindaLedge` の `search` メソッドが `search_kwargs` を用いて実行される。
 
 ### 6.3 シーケンス図
 
 ```plantuml
 @startuml
 actor Caller
-participant "FinderLedge" as Ledge
-participant "FinderLedgeRetriever\n(BaseRetriever)" as Retriever
+participant "FindaLedge" as Ledge
+participant "FindaLedgeRetriever\n(BaseRetriever)" as Retriever
 
 Caller -> Ledge : as_retriever(**search_kwargs)
 activate Ledge
-Ledge -> Retriever : __init__(finderledge=self, **search_kwargs)
+Ledge -> Retriever : __init__(findaledge=self, **search_kwargs)
 activate Retriever
 Retriever --> Ledge : retriever_instance
 deactivate Retriever
