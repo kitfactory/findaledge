@@ -16,11 +16,12 @@ from typing import Dict, List, Optional, Union, Any
 
 # LangChain document standard
 from langchain_core.documents import Document as LangchainDocument
+from langchain_core.retrievers import BaseRetriever
 
 # Project components
 from .finder import Finder, SearchResult # The new RRF reranker
 from .document_store.document_store import BaseDocumentStore
-from .document_store.vector_document_store import VectorDocumentStore, VectorStoreRetriever
+from .document_store.vector_document_store import VectorDocumentStore
 from .document_store.bm25s import BM25sStore, BM25sRetriever # Import retriever as well
 from .embeddings_factory import EmbeddingModelFactory
 from .document_loader import DocumentLoader
@@ -102,9 +103,9 @@ RRFリランキングを介して統一された検索インターフェース�
         bm25_subdir_to_use = bm25_index_subdir or os.getenv("FINDERLEDGE_BM25S_SUBDIR", "bm25s_index")
 
         # Initialize components
-        self.embedding_factory = EmbeddingModelFactory()
-        self.embedding_model = self.embedding_factory.get_model(model_name_to_use)
-        # Assuming DocumentSplitter takes model name or tokenizer directly if needed
+        # self.embedding_factory = EmbeddingModelFactory() # No need to instantiate
+        # Call the static method directly
+        self.embedding_model = EmbeddingModelFactory.create_embeddings(model_name=model_name_to_use)
         self.document_splitter = DocumentSplitter(
             chunk_size=chunk_size,
             chunk_overlap=chunk_overlap,
@@ -144,6 +145,21 @@ RRFリランキングを介して統一された検索インターフェース�
         print(f" Stores: VectorStore in '{vector_subdir_to_use}', BM25sStore in '{bm25_subdir_to_use}'")
         print(f" Embedding model: {model_name_to_use}")
 
+    def _load_documents_from_path(self, path: Path) -> List[LangchainDocument]:
+        """Internal helper to load documents from a verified existing path."""
+        loaded_docs: List[LangchainDocument] = []
+        if path.is_dir():
+            print(f"Loading from directory: {path}")
+            loaded_docs = self.document_loader.load_from_directory(path)
+        elif path.is_file():
+            print(f"Loading from file: {path}")
+            loaded_doc = self.document_loader.load_file(path)
+            if loaded_doc:
+                loaded_docs = [loaded_doc]
+        else:
+            print(f"Warning: Path {path} exists but is neither a file nor a directory recognized for loading. Skipping.")
+        return loaded_docs
+
     def add_document(
         self,
         content_or_path: Union[str, Path],
@@ -169,23 +185,61 @@ RRFリランキングを介して統一された検索インターフェース�
                        ストアに追加された文書IDのリスト。
         """
         print(f"Adding document(s) from: {content_or_path}")
-        # 1. Load document(s)
-        # DocumentLoader handles loading from string, file, or directory
-        loaded_docs: List[LangchainDocument] = self.document_loader.load(content_or_path, doc_type)
+        loaded_docs: List[LangchainDocument] = []
+        path_to_load: Optional[Path] = None # Path object to potentially load from
 
+        # --- Determine Input Type and Validate Path --- 
+        if isinstance(content_or_path, Path):
+            if content_or_path.exists():
+                path_to_load = content_or_path
+            else:
+                 print(f"Warning: Provided Path object does not exist: {content_or_path}. Skipping.")
+
+        elif isinstance(content_or_path, str):
+            try:
+                potential_path = Path(content_or_path)
+                if potential_path.exists():
+                    path_to_load = potential_path
+                else:
+                    # String is not an existing path, treat as raw content
+                    print("Input string does not exist as a path, treating as raw content.")
+                    if not doc_type:
+                         doc_type = DocumentType.TEXT
+                    base_meta = {"source": "raw_string"}
+                    if metadata:
+                         base_meta.update(metadata)
+                    loaded_docs = [LangchainDocument(page_content=content_or_path, metadata=base_meta)]
+            except OSError:
+                 # String is not a valid path, treat as raw content
+                 print("Input string is not a valid path, treating as raw content.")
+                 if not doc_type:
+                      doc_type = DocumentType.TEXT
+                 base_meta = {"source": "raw_string"}
+                 if metadata:
+                      base_meta.update(metadata)
+                 loaded_docs = [LangchainDocument(page_content=content_or_path, metadata=base_meta)]
+        else:
+             print(f"Warning: Unsupported input type for content_or_path: {type(content_or_path)}. Skipping.")
+
+        # --- Load from Path if applicable --- 
+        if path_to_load and not loaded_docs:
+            loaded_docs = self._load_documents_from_path(path_to_load)
+
+        # --- Process loaded/generated documents --- 
         if not loaded_docs:
-             print("No documents were loaded.")
+             print("No documents were loaded or generated from input.")
              return []
 
-        # Add base metadata if provided
-        if metadata:
+        # Add base metadata if provided (and not already added for raw string)
+        if metadata and path_to_load: # Only add if loaded from path, raw content handled above
             for doc in loaded_docs:
-                doc.metadata.update(metadata)
+                existing_meta = doc.metadata.copy()
+                existing_meta.update(metadata)
+                doc.metadata = existing_meta
 
-        # 2. Split documents
+        # Split documents
         all_split_docs: List[LangchainDocument] = []
         for doc in loaded_docs:
-             # Use DocumentSplitter which handles different types if necessary
              split_docs = self.document_splitter.split_documents([doc])
              all_split_docs.extend(split_docs)
 
@@ -193,16 +247,11 @@ RRFリランキングを介して統一された検索インターフェース�
              print("No documents generated after splitting.")
              return []
 
-        # Ensure unique IDs for split chunks if splitter doesn't handle it
-        # (VectorStore/BM25sStore add_documents might handle IDs anyway)
-        # For simplicity, assume stores handle ID generation or accept provided ones.
-
-        # 3. Add to all managed stores
+        # Add to all managed stores
         added_ids_combined = set()
         for store in self.document_stores:
             print(f"Adding {len(all_split_docs)} split documents to {store.__class__.__name__}...")
             try:
-                # We pass the split documents (chunks). The stores should handle ID assignment.
                 added_ids = store.add_documents(all_split_docs)
                 if added_ids:
                      added_ids_combined.update(added_ids)
@@ -211,7 +260,7 @@ RRFリランキングを介して統一された検索インターフェース�
                 print(f"Error adding documents to {store.__class__.__name__}: {e}")
 
         print(f"Document addition process complete. Added IDs: {list(added_ids_combined)}")
-        return list(added_ids_combined) # Return unique IDs across stores
+        return list(added_ids_combined)
 
     def remove_document(self, doc_id: str) -> None:
         """

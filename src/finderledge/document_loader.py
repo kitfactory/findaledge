@@ -213,7 +213,7 @@ class DocumentLoader:
     # --- 古いメソッド (load_json, load_markdown) は削除 ---
     # 必要であれば、load_file や load_from_directory を使って再実装するか、
     # 専用のローダーを別途用意する。
-
+    
     def load_json(self, file_path: Union[str, Path]) -> Dict[str, Any]:
         """
         Load a JSON document
