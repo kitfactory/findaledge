@@ -12,6 +12,7 @@ from langchain.schema import Document, BaseRetriever
 from langchain.embeddings.base import Embeddings
 from .document_store import BaseDocumentStore
 from ..document_splitter import DocumentSplitter
+import uuid
 
 class VectorDocumentStore(BaseDocumentStore, ABC):
     """
@@ -57,34 +58,64 @@ class VectorDocumentStore(BaseDocumentStore, ABC):
         ids: Optional[Sequence[str]] = None
     ) -> List[str]:
         """
-        Add documents to the store
-        ドキュメントをストアに追加する
+        Add documents to the store, handling splitting and metadata.
+        ドキュメントをストアに追加し、分割とメタデータを処理します。
 
         Args:
             documents (Sequence[Document]): Documents to add
                 追加するドキュメント
-            ids (Optional[Sequence[str]], optional): Optional document IDs
-                オプションのドキュメントID
+            ids (Optional[Sequence[str]], optional): Optional document IDs. If provided, must match the length of documents.
+                オプションのドキュメントID。指定する場合、ドキュメントの数と一致する必要があります。
 
         Returns:
-            List[str]: List of document IDs
-                ドキュメントIDのリスト
+            List[str]: List of parent document IDs (or original IDs if not split).
+                親ドキュメントID（または分割されなかった場合は元のID）のリスト。
         """
-        # Add parent documents
-        parent_ids = self._add_documents(documents, ids)
+        if ids and len(ids) != len(documents):
+            raise ValueError("Number of IDs must match number of documents")
 
-        # Split and add child documents
-        for doc, parent_id in zip(documents, parent_ids):
+        docs_to_add: List[Document] = []
+        processed_parent_ids: List[str] = []
+
+        for i, doc in enumerate(documents):
+            # Assign or generate parent ID
+            parent_id = ids[i] if ids else doc.metadata.get("id", str(uuid.uuid4()))
+            # Ensure original doc metadata has the definitive ID
             doc.metadata["id"] = parent_id
-            doc.metadata["is_parent"] = True
-            splits = self.document_splitter.split_document(doc)
-            for i, split in enumerate(splits):
-                split.metadata["parent_id"] = parent_id
-                split.metadata["is_split"] = True
-                split.metadata["split_index"] = i
-            self._add_documents(splits)
 
-        return parent_ids
+            # Attempt to split the document
+            splits = self.document_splitter.split_document(doc) 
+
+            if len(splits) > 1:
+                # Document was split
+                # 1. Mark original document as parent
+                parent_doc = doc # Keep original doc object
+                parent_doc.metadata["is_parent"] = True
+                parent_doc.metadata["split_count"] = len(splits) # Add split count
+                docs_to_add.append(parent_doc)
+                
+                # 2. Add split chunks (metadata already set by splitter)
+                docs_to_add.extend(splits)
+                processed_parent_ids.append(parent_id)
+            else:
+                # Document was not split, add the original document as is
+                # Ensure no potentially confusing parent/split metadata is present
+                doc.metadata.pop("is_parent", None)
+                doc.metadata.pop("is_split", None)
+                doc.metadata.pop("parent_id", None)
+                doc.metadata.pop("split_index", None)
+                doc.metadata.pop("split_count", None)
+                docs_to_add.append(doc)
+                processed_parent_ids.append(parent_id) # Still track the ID
+        
+        # Add all collected documents (parents, splits, unsplit) to the underlying store at once
+        if docs_to_add:
+             # Extract IDs for the final list to add
+             final_ids = [d.metadata["id"] for d in docs_to_add]
+             self._add_documents(docs_to_add, final_ids)
+
+        # Return the IDs of the original documents processed
+        return processed_parent_ids
 
     @abstractmethod
     def _add_documents(

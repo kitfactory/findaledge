@@ -3,7 +3,7 @@ Vector Document Store Module using ChromaDB
 ChromaDBを使用したベクトルドキュメントストアモジュール
 """
 
-from typing import List, Optional, Sequence, Any
+from typing import List, Optional, Sequence, Any, Dict
 from uuid import uuid4
 from langchain.schema import Document, BaseRetriever
 from langchain.vectorstores import Chroma
@@ -48,7 +48,7 @@ class ChromaDocumentStore(VectorDocumentStore):
         """
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
-        super().__init__(chunk_size=chunk_size, chunk_overlap=chunk_overlap, **kwargs)
+        super().__init__(embedding_function=embedding_function, chunk_size=chunk_size, chunk_overlap=chunk_overlap, **kwargs)
         self.persist_directory = persist_directory
         self.embedding_function = embedding_function
         self.collection_name = collection_name
@@ -73,54 +73,60 @@ class ChromaDocumentStore(VectorDocumentStore):
         """
         Add documents to ChromaDB store
         ChromaDBストアにドキュメントを追加
+        (Implementation detail called by VectorDocumentStore.add_documents)
+        (VectorDocumentStore.add_documentsによって呼び出される実装詳細)
 
         Args:
-            documents (Sequence[Document]): Documents to add
-                追加するドキュメント
-            ids (Optional[Sequence[str]], optional): Custom IDs for documents. Defaults to None.
-                ドキュメントのカスタムID。デフォルトはNone。
+            documents (Sequence[Document]): Documents to add (potentially already split)
+                追加するドキュメント（既に分割されている可能性あり）
+            ids (Optional[Sequence[str]], optional): Custom IDs for documents. Should be provided by the caller.
+                ドキュメントのカスタムID。呼び出し元から提供されるべき。
 
         Returns:
-            List[str]: List of parent document IDs
-                親ドキュメントIDのリスト
+            List[str]: List of document IDs added/updated.
+                追加/更新されたドキュメントIDのリスト。
         """
-        # Generate IDs if not provided
-        if ids is None:
-            ids = [str(uuid4()) for _ in documents]
+        if not ids:
+             # Assuming VectorDocumentStore ensures documents have IDs in metadata
+             # If not, this implementation might need adjustment or error handling
+            ids = [doc.metadata["id"] for doc in documents]
 
-        # Add documents to ChromaDB
-        for i, doc in enumerate(documents):
-            doc.metadata["id"] = str(ids[i])
+        # Call Chroma's add_documents using keyword arguments
+        # Chroma handles upsert based on IDs
+        self.chroma_store.add_documents(documents=documents, ids=ids)
 
-        self.chroma_store.add_documents(documents, ids)
+        # Return the list of IDs that were processed
+        return ids
 
-        # Return only parent document IDs
-        parent_ids = []
-        for i, doc in enumerate(documents):
-            if doc.metadata.get("is_parent", False):
-                parent_ids.append(str(ids[i]))
-
-        return parent_ids
-
-    def _get_document(self, doc_id: str) -> Optional[Document]:
+    def _get_document(self, doc_id: str, is_parent: Optional[bool] = None) -> Optional[Document]:
         """
-        Get document from ChromaDB store by ID
-        IDでChromaDBストアから文書を取得
+        Get document from ChromaDB store by ID, optionally filtering by parent status.
+        IDでChromaDBストアから文書を取得し、オプションで親ステータスでフィルタリングします。
 
         Args:
             doc_id (str): Document ID.
                 文書ID。
+            is_parent (Optional[bool]): If True, only retrieve if it's a parent document.
+                Trueの場合、親ドキュメントの場合のみ取得します。
 
         Returns:
             Optional[Document]: Document if found, None otherwise.
                 見つかった場合は文書、それ以外はNone。
         """
-        results = self.chroma_store.similarity_search(
-            query="",
-            k=1,
-            filter={"id": doc_id}
+        chroma_filter: Dict[str, Any] = {"id": doc_id}
+        if is_parent is True:
+            # Combine filters using $and for ChromaDB compatibility
+            chroma_filter = {"$and": [{"id": doc_id}, {"is_parent": True}]}
+        # If is_parent is False or None, the initial filter {"id": doc_id} is used
+
+        # Use similarity_search with a filter for reliable retrieval
+        # Using get() with complex filters can be less straightforward
+        results_ss = self.chroma_store.similarity_search(
+            query="*", # Use a dummy query for metadata filtering
+            k=1,       # We only expect one document with a unique ID
+            filter=chroma_filter
         )
-        return results[0] if results else None
+        return results_ss[0] if results_ss else None
 
     def _get_split_documents(self, parent_id: str) -> List[Document]:
         """
@@ -135,14 +141,27 @@ class ChromaDocumentStore(VectorDocumentStore):
             List[Document]: List of split documents.
                 分割文書のリスト。
         """
+        # Combine filters using $and for ChromaDB
+        chroma_filter = {"$and": [
+            {"parent_id": parent_id},
+            {"is_split": True}
+        ]}
+        
+        # Consider using get() with where filter if performance is critical
+        # results = self.chroma_store.get(where=chroma_filter, include=["metadatas", "documents"]) 
+        # Reconstruct documents from results['metadatas'], results['documents']
+        
+        # Using similarity_search for simplicity now
         results = self.chroma_store.similarity_search(
-            query="",
-            k=100,  # Assuming no document has more than 100 splits
-            filter={
-                "parent_id": parent_id,
-                "is_split": True
-            }
+            query="*", # Dummy query for metadata filtering
+            k=1000,  # Increase k substantially to ensure all splits are retrieved
+            filter=chroma_filter
         )
+        # Sort by split_index if metadata is present
+        try:
+            results.sort(key=lambda doc: doc.metadata.get('split_index', 0))
+        except Exception:
+            pass # Ignore sorting errors if metadata is missing
         return results
 
     def delete_document(self, doc_id: str) -> None:

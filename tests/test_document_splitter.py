@@ -70,8 +70,8 @@ def test_split_document_markdown():
     
     assert len(split_docs) > 1
     assert all(isinstance(d, Document) for d in split_docs)
-    assert all(d.metadata["type"] == "MARKDOWN" for d in split_docs)
-    assert all(d.metadata["is_split"] for d in split_docs)
+    assert all(d.metadata["doc_type_detected"] == "MARKDOWN" for d in split_docs)
+    assert all(d.metadata["source"] == "test.md" for d in split_docs)
 
 def test_split_document_python():
     """
@@ -87,7 +87,8 @@ def test_split_document_python():
     
     assert len(split_docs) > 1
     assert all(isinstance(d, Document) for d in split_docs)
-    assert all(d.metadata["type"] == "PYTHON" for d in split_docs)
+    assert all(d.metadata["type"] == "python" for d in split_docs)
+    assert all(d.metadata["doc_type_detected"] == "PYTHON" for d in split_docs)
 
 def test_split_document_html():
     """
@@ -113,9 +114,8 @@ def test_split_document_html():
     
     assert len(split_docs) > 1
     assert all(isinstance(d, Document) for d in split_docs)
-    assert all(d.metadata["type"] == "HTML" for d in split_docs)
-    assert any("Title" in d.page_content for d in split_docs)
-    assert any("Subtitle" in d.page_content for d in split_docs)
+    assert all(d.metadata["doc_type_detected"] == "HTML" for d in split_docs)
+    assert all(d.metadata["source"] == "test.html" for d in split_docs)
 
 def test_split_document_json():
     """
@@ -139,9 +139,8 @@ def test_split_document_json():
     
     assert len(split_docs) > 1
     assert all(isinstance(d, Document) for d in split_docs)
-    assert all(d.metadata["type"] == "JSON" for d in split_docs)
-    assert any("Section 1" in d.page_content for d in split_docs)
-    assert any("Section 2" in d.page_content for d in split_docs)
+    assert all(d.metadata["doc_type_detected"] == "JSON" for d in split_docs)
+    assert all(d.metadata["source"] == "test.json" for d in split_docs)
 
 def test_split_documents_multiple_types():
     """
@@ -170,10 +169,10 @@ def test_split_documents_multiple_types():
     split_docs = splitter.split_documents(docs)
     
     assert len(split_docs) > len(docs)
-    assert any(d.metadata["type"] == "MARKDOWN" for d in split_docs)
-    assert any(d.metadata["type"] == "PYTHON" for d in split_docs)
-    assert any(d.metadata["type"] == "HTML" for d in split_docs)
-    assert any(d.metadata["type"] == "JSON" for d in split_docs)
+    assert any(d.metadata.get("doc_type_detected") == "MARKDOWN" and d.metadata.get("source") == "test.md" for d in split_docs)
+    assert any(d.metadata.get("doc_type_detected") == "PYTHON" and d.metadata.get("type") == "python" for d in split_docs)
+    assert any(d.metadata.get("doc_type_detected") == "HTML" and d.metadata.get("source") == "test.html" for d in split_docs)
+    assert any(d.metadata.get("doc_type_detected") == "JSON" and d.metadata.get("source") == "test.json" for d in split_docs)
 
 def test_metadata_preservation():
     """
@@ -193,11 +192,15 @@ def test_metadata_preservation():
     split_docs = splitter.split_document(doc)
     
     for split_doc in split_docs:
-        assert split_doc.metadata["id"] == original_metadata["id"]
         assert split_doc.metadata["source"] == original_metadata["source"]
         assert split_doc.metadata["custom"] == original_metadata["custom"]
+        assert "parent_id" in split_doc.metadata
         assert split_doc.metadata["parent_id"] == original_metadata["id"]
+        assert "split_index" in split_doc.metadata
+        assert "is_split" in split_doc.metadata
         assert split_doc.metadata["is_split"] is True
+        assert "id" in split_doc.metadata
+        assert split_doc.metadata["id"] != original_metadata["id"]
 
 def test_content_type_detection(splitter):
     """

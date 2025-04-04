@@ -12,6 +12,7 @@ from typing import List, Optional, Dict, Any, Union
 from pathlib import Path
 from enum import Enum, auto
 import uuid
+import json
 
 from langchain.text_splitter import (
     TextSplitter,
@@ -134,13 +135,12 @@ class DocumentSplitter:
             if ext in ext_map:
                 return ext_map[ext]
 
-        # Try to detect content type
-        content = document.content.strip()
-        if content.startswith("<!DOCTYPE html") or content.startswith("<html"):
+        # If no metadata hint, try content detection
+        content = document.page_content.strip()
+        if content.startswith("<!DOCTYPE html") or content.startswith("<html>"):
             return DocumentType.HTML
-        if content.startswith("{") and content.endswith("}"):
+        if content.startswith("{") or content.startswith("["):
             try:
-                import json
                 json.loads(content)
                 return DocumentType.JSON
             except json.JSONDecodeError:
@@ -149,53 +149,56 @@ class DocumentSplitter:
         # Default to TEXT type with recursive character splitting
         return DocumentType.TEXT
 
-    def split_document(self, document: Document) -> List[Document]:
+    def _get_splitter_for_type(self, doc_type: DocumentType) -> TextSplitter:
         """
-        Split a document using the appropriate text splitter
-        適切なテキストスプリッターを使用してドキュメントを分割
+        Get the appropriate text splitter for a given document type
+        指定されたドキュメントタイプに適したテキストスプリッターを取得
 
         Args:
-            document (Document): The document to split
-                           分割するドキュメント
+            doc_type (DocumentType): The document type
+                ドキュメントタイプ
 
         Returns:
-            List[Document]: List of split documents
-                       分割されたドキュメントのリスト
+            TextSplitter: The appropriate text splitter for the given document type
+                指定されたドキュメントタイプに適したテキストスプリッター
+        """
+        return self.splitters[doc_type]
+
+    def split_document(self, document: Document) -> List[Document]:
+        """
+        Split a single document based on its detected or specified type.
+        検出された、または指定されたタイプに基づいて単一のドキュメントを分割します。
         """
         doc_type = self._get_document_type(document)
-        splitter = self.splitters[doc_type]
+        splitter = self._get_splitter_for_type(doc_type)
 
-        # Prepare base metadata
-        base_metadata = document.metadata.copy()
-        base_metadata["type"] = doc_type.name
-        base_metadata["parent_id"] = document.metadata.get("id", "")
-        base_metadata["is_split"] = True
+        # Use page_content instead of content
+        split_texts = splitter.split_text(document.page_content)
 
-        if isinstance(splitter, HTMLSemanticPreservingSplitter):
-            split_docs = splitter.transform_documents([document])
-            for doc in split_docs:
-                doc.metadata.update(base_metadata)
-            return split_docs
-        else:
-            split_texts = splitter.split_text(document.content)
-            split_docs = []
-            for text in split_texts:
-                metadata = base_metadata.copy()
-                split_docs.append(Document(id=str(uuid.uuid4()), content=text, metadata=metadata))
-            return split_docs
+        # Create new Document objects for each split
+        split_docs = []
+        # Use original metadata id as parent_id if available, else generate one.
+        parent_id = document.metadata.get("id", str(uuid.uuid4()))
+
+        for i, text in enumerate(split_texts):
+            # Start with a copy of the original metadata
+            metadata = document.metadata.copy()
+            # Update with split-specific info
+            metadata["parent_id"] = parent_id
+            metadata["split_index"] = i
+            metadata["is_split"] = True
+            # Assign a new unique ID to the split chunk itself
+            metadata["id"] = f"{parent_id}_split_{i}"
+            # Ensure the detected type is also in metadata if needed later
+            metadata["doc_type_detected"] = doc_type.name
+            split_docs.append(Document(page_content=text, metadata=metadata))
+
+        return split_docs
 
     def split_documents(self, documents: List[Document]) -> List[Document]:
         """
-        Split multiple documents using appropriate text splitters
-        適切なテキストスプリッターを使用して複数のドキュメントを分割
-
-        Args:
-            documents (List[Document]): Documents to split
-                分割するドキュメント
-
-        Returns:
-            List[Document]: List of split documents
-                分割されたドキュメントのリスト
+        Split multiple documents.
+        複数のドキュメントを分割します。
         """
         split_docs = []
         for doc in documents:

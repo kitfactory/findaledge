@@ -31,7 +31,7 @@ class EmbeddingModelFactory:
 
     @staticmethod
     def create_embeddings(
-        model_provider: Optional[ModelProvider] = None, # 引数名変更、Optionalに
+        model_provider: Optional[Union[ModelProvider, str]] = None, # Allow str input
         model_name: Optional[str] = None,
         cache_dir: Optional[str] = None,
         **kwargs: Any
@@ -41,10 +41,10 @@ class EmbeddingModelFactory:
         埋め込みモデルのインスタンスを作成
 
         Args:
-            model_provider (Optional[ModelProvider], optional): Type of embedding model provider to create.
+            model_provider (Optional[Union[ModelProvider, str]], optional): Type of embedding model provider to create.
                 If None, reads from FINDERLEDGE_MODEL_PROVIDER environment variable (default: 'openai').
                 作成する埋め込みモデルプロバイダーの種類。Noneの場合、環境変数 FINDERLEDGE_MODEL_PROVIDER
-                から読み込みます (デフォルト: 'openai')。
+                から読み込みます (デフォルト: 'openai').
             model_name (Optional[str], optional): Name of the specific model to use.
                 For Ollama, this could be 'llama2' etc. Defaults to None.
                 使用する特定のモデル名。Ollamaの場合、'llama2'などが指定可能。デフォルトはNone。
@@ -68,20 +68,37 @@ class EmbeddingModelFactory:
 
         provider_to_use: ModelProvider
         if model_provider is None:
+            # Determine provider from environment variable
             provider_str = os.getenv("FINDERLEDGE_MODEL_PROVIDER", "openai").upper()
             try:
                 provider_to_use = ModelProvider[provider_str]
             except KeyError:
                 raise ValueError(
-                    f"Unsupported model provider in environment variable FINDERLEDGE_MODEL_PROVIDER: {provider_str}"
-                    f"環境変数 FINDERLEDGE_MODEL_PROVIDER で指定されたプロバイダーはサポートされていません: {provider_str}"
+                    f"Unsupported model provider in environment variable FINDERLEDGE_MODEL_PROVIDER: {provider_str}. "
+                    f"Supported: {[p.name for p in ModelProvider]}."
                 )
-        else:
+        elif isinstance(model_provider, str):
+            # Determine provider from string input
+            provider_str = model_provider.upper()
+            try:
+                provider_to_use = ModelProvider[provider_str]
+            except KeyError:
+                raise ValueError(
+                    f"Unsupported model provider string: {model_provider}. "
+                    f"Supported: {[p.name for p in ModelProvider]}."
+                )
+        elif isinstance(model_provider, ModelProvider):
+            # Provider is already an enum
             provider_to_use = model_provider
+        else:
+             # Handle unexpected type for model_provider
+            raise TypeError(f"Invalid type for model_provider: {type(model_provider)}. Expected ModelProvider enum or str.")
 
-        # Create base embeddings based on model provider
+        # Now call _create_base_embeddings with the determined ModelProvider enum
         base_embeddings = EmbeddingModelFactory._create_base_embeddings(
-            provider_to_use, model_name, **kwargs
+            model_provider=provider_to_use,
+            model_name=model_name,
+            **kwargs
         )
 
         # Wrap with cache if cache_dir is provided
@@ -102,7 +119,7 @@ class EmbeddingModelFactory:
 
     @staticmethod
     def _create_base_embeddings(
-        model_provider: ModelProvider, # 引数名変更
+        model_provider: ModelProvider, # Expects enum now
         model_name: Optional[str] = None,
         **kwargs: Any
     ) -> Embeddings:
@@ -143,7 +160,6 @@ class EmbeddingModelFactory:
             if not final_kwargs.get('openai_api_key'):
                 raise ValueError(
                     "OpenAI API key is required. Provide it via OPENAI_API_KEY environment variable or openai_api_key argument."
-                    "OpenAI APIキーが必要です。環境変数 OPENAI_API_KEY または openai_api_key 引数で指定してください。"
                 )
             return OpenAIEmbeddings(**final_kwargs)
 
@@ -157,10 +173,7 @@ class EmbeddingModelFactory:
             final_kwargs = {k: v for k, v in final_kwargs.items() if v is not None}
             return OllamaEmbeddings(**final_kwargs)
 
-        raise ValueError(
-            f"Unsupported model provider: {model_provider}"
-            f"サポートされていないモデルプロバイダーです: {model_provider}"
-        )
+        raise ValueError(f"Unsupported model provider: {model_provider}")
 
 # 使用例 / Usage examples:
 """
