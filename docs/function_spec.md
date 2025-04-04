@@ -1,407 +1,343 @@
 # FinderLedge 機能仕様書
 
-## 1. 文書管理機能
+この文書は、`FinderLedge` ライブラリの主要な機能の仕様を定義します。
 
-### 1.1 文書インポート（UC-01）
-#### ユースケース手順
-1. ユーザーが文書ファイルを指定
-2. システムがファイル形式を判定
-3. システムが文書をパース
-4. システムがテキストを抽出
-5. システムがチャンクに分割
-6. システムがインデックスを更新
+## 1. `FinderLedge` 初期化 (`__init__`)
 
-#### ユースケースフロー図
+### 1.1 機能概要
+`FinderLedge` クラスのインスタンスを生成し、設定に基づいて内部コンポーネント（ベクトルストア、キーワードストア、埋め込みモデル、ファインダー等）を初期化します。設定は、環境変数または `__init__` の引数を通じて行われます。
+
+### 1.2 ユースケース手順
+1.  呼び出し元が `FinderLedge()` または `FinderLedge(**kwargs)` を実行。
+2.  `FinderLedge` は設定（引数、環境変数、デフォルト値）を解決。
+3.  `EmbeddingModelFactory.create_embeddings` を呼び出し、設定に基づいた埋め込みモデル (Embeddings) を取得。
+4.  設定に基づいて `VectorDocumentStore` (Chroma または FAISS) のインスタンスを生成（埋め込みモデルと永続化パスを渡す）。ストアは内部でインデックスをロードまたは新規作成。
+5.  設定に基づいて `BM25DocumentStore` のインスタンスを生成（永続化パスを渡す）。ストアは内部でインデックスをロードまたは新規作成。
+6.  `Finder` のインスタンスを生成。
+7.  初期化された各コンポーネントをインスタンス変数として保持。
+
+### 1.3 シーケンス図
+
 ```plantuml
 @startuml
-actor User
-participant "UserAPIInterface" as API
-participant "DocumentManager" as DM
-participant "Document" as Doc
-participant "FileSystem" as FS
-participant "EmbeddingService" as ES
-participant "IndexManager" as IM
+actor Caller
+participant "FinderLedge" as Ledge
+participant "EmbeddingModelFactory" as EmbedFactory
+participant "VectorDocumentStore\n(Chroma/FAISS)" as VecStore
+participant "BM25DocumentStore" as KWStore
+participant "Finder" as Finder
 
-User -> API: 文書ファイルを指定
-API -> DM: 文書インポート要求
-DM -> FS: ファイル読み込み
-FS --> DM: ファイル内容
-DM -> Doc: 文書パース
-Doc -> Doc: テキスト抽出
-Doc -> Doc: チャンク分割
-Doc -> ES: 埋め込み計算
-ES --> Doc: ベクトル
-Doc -> IM: インデックス更新
-IM --> DM: 更新完了
-DM --> API: インポート完了
-API --> User: 完了通知
+Caller -> Ledge : __init__(**kwargs)
+activate Ledge
+Ledge -> Ledge : 設定を解決
+Ledge -> EmbedFactory : create_embeddings()
+activate EmbedFactory
+EmbedFactory --> Ledge : embeddings
+deactivate EmbedFactory
+
+Ledge -> VecStore : __init__(embeddings, persist_path, ...)
+activate VecStore
+VecStore -> VecStore : インデックスをロード or 新規作成
+VecStore --> Ledge : vector_store
+deactivate VecStore
+
+Ledge -> KWStore : __init__(persist_path, ...)
+activate KWStore
+KWStore -> KWStore : インデックスをロード or 新規作成
+KWStore --> Ledge : keyword_store
+deactivate KWStore
+
+Ledge -> Finder : __init__()
+activate Finder
+Finder --> Ledge : finder
+deactivate Finder
+
+Ledge --> Caller : FinderLedge インスタンス
+deactivate Ledge
 @enduml
 ```
 
-### 1.2 インデックス自動更新（UC-02）
-#### ユースケース手順
-1. システムが文書変更を検知
-2. システムが変更箇所を特定
-3. システムが差分を計算
-4. システムがインデックスを更新
-5. システムがキャッシュを更新
+### 1.4 主要な引数
+*   `vector_store_provider` (str): 使用するベクトルストア ("chroma" または "faiss")。
+*   `keyword_store_provider` (str): 使用するキーワードストア ("bm25")。
+*   `embedding_provider` (str): 使用する埋め込みプロバイダー ("openai", "ollama", "huggingface")。
+*   `embedding_model_name` (str): 使用する埋め込みモデル名。
+*   `persist_directory` (str): インデックス等の永続化ディレクトリパス。
+*   `chunk_size` (int): ドキュメント分割時のチャンクサイズ。
+*   `chunk_overlap` (int): ドキュメント分割時のチャンクオーバーラップ。
+*   その他、各コンポーネントに渡される `**kwargs`。
 
-#### ユースケースフロー図
+## 2. ドキュメント追加 (`add_document`)
+
+### 2.1 機能概要
+指定されたファイルパスまたはディレクトリパスからドキュメントを読み込み、パース、分割し、ベクトルストアとキーワードストアの両方に追加（インデックス更新）します。
+
+### 2.2 ユースケース手順
+1.  呼び出し元が `ledge.add_document(path)` を実行。
+2.  `FinderLedge` は LangChain の `DocumentLoader` を使用して `path` から `Document` オブジェクトのリストを作成。
+3.  `FinderLedge` が保持する `VectorDocumentStore` の `add_documents` を呼び出す。
+4.  `VectorDocumentStore` は文書をチャンキングし、親と分割チャンクにメタデータを付与して、自身の実装 (`_add_documents`) を呼び出し、ベクトルストア（Chroma/FAISS）にデータを追加・永続化。
+5.  `FinderLedge` が保持する `BM25DocumentStore` の `add_documents` を呼び出す。
+6.  `BM25DocumentStore` は文書のテキストからインデックスを構築・更新し、永続化。
+7.  追加された（親）ドキュメントの ID リストを返す。
+
+### 2.3 シーケンス図
+
 ```plantuml
 @startuml
-participant "FileSystem" as FS
-participant "DocumentManager" as DM
-participant "Document" as Doc
-participant "EmbeddingService" as ES
-participant "IndexManager" as IM
-participant "VectorDocumentStore" as VS
-participant "BM25Index" as BM25
+actor Caller
+participant "FinderLedge" as Ledge
+participant "DocumentLoader" as Loader
+participant "VectorDocumentStore" as VecStore
+participant "BM25DocumentStore" as KWStore
 
-FS -> DM: 文書変更通知
-DM -> Doc: 変更箇所特定
-Doc -> Doc: 差分計算
-Doc -> ES: 埋め込み更新
-ES --> Doc: 新規ベクトル
-Doc -> IM: インデックス更新要求
-IM -> VS: ベクトル更新
-IM -> BM25: キーワード更新
-VS --> IM: 更新完了
-BM25 --> IM: 更新完了
-IM --> DM: 更新完了
+Caller -> Ledge : add_document(path_or_doc)
+activate Ledge
+Ledge -> Loader : load(path_or_doc)
+activate Loader
+Loader --> Ledge : documents (List[Document])
+deactivate Loader
+
+Ledge -> VecStore : add_documents(documents)
+activate VecStore
+VecStore -> VecStore : 文書分割 & メタデータ付与
+VecStore -> VecStore : _add_documents (ベクトル化 & 追加)
+VecStore -> VecStore : 永続化
+VecStore --> Ledge : parent_ids
+deactivate VecStore
+
+Ledge -> KWStore : add_documents(documents)
+activate KWStore
+KWStore -> KWStore : インデックス構築/更新
+KWStore -> KWStore : 永続化
+KWStore --> Ledge
+deactivate KWStore
+
+Ledge --> Caller : parent_ids (List[str])
+deactivate Ledge
 @enduml
 ```
 
-### 1.3 文書削除（UC-03）
-#### ユースケース手順
-1. ユーザーが文書を指定
-2. システムが文書を検証
-3. システムがインデックスから削除
-4. システムがキャッシュを更新
+### 2.4 主要な引数
+*   `path_or_doc` (str | Path | Document | List[Document]): 追加するドキュメントのファイルパス、ディレクトリパス、または Document オブジェクト（単一またはリスト）。
 
-#### ユースケースフロー図
+### 2.5 戻り値
+*   `List[str]`: 追加された元のドキュメントに対応する（親）ID のリスト。
+
+## 3. ドキュメント削除 (`remove_document`)
+
+### 3.1 機能概要
+指定された（親）ドキュメント ID に関連するすべてのデータ（親ドキュメント、分割チャンク）を、ベクトルストアとキーワードストアの両方から削除します。
+
+### 3.2 ユースケース手順
+1.  呼び出し元が `ledge.remove_document(doc_id)` を実行。
+2.  `FinderLedge` が保持する `VectorDocumentStore` の `remove_document` を呼び出す。
+3.  `VectorDocumentStore` は指定された ID と、それに関連する分割チャンクの ID を特定し、自身の実装 (`_remove_documents`) を呼び出してベクトルストアから削除。
+4.  `FinderLedge` が保持する `BM25DocumentStore` の `remove_document` を呼び出す。
+5.  `BM25DocumentStore` は指定された ID に関連するデータをインデックスから削除し、永続化。
+
+### 3.3 シーケンス図
+
 ```plantuml
 @startuml
-actor User
-participant "UserAPIInterface" as API
-participant "DocumentManager" as DM
-participant "Document" as Doc
-participant "IndexManager" as IM
-participant "VectorDocumentStore" as VS
-participant "BM25Index" as BM25
+actor Caller
+participant "FinderLedge" as Ledge
+participant "VectorDocumentStore" as VecStore
+participant "BM25DocumentStore" as KWStore
 
-User -> API: 文書削除要求
-API -> DM: 削除要求
-DM -> Doc: 文書検証
-Doc --> DM: 検証結果
-DM -> IM: インデックス削除要求
-IM -> VS: ベクトル削除
-IM -> BM25: キーワード削除
-VS --> IM: 削除完了
-BM25 --> IM: 削除完了
-IM --> DM: 削除完了
-DM --> API: 削除完了
-API --> User: 完了通知
+Caller -> Ledge : remove_document(doc_id)
+activate Ledge
+
+Ledge -> VecStore : remove_document(doc_id)
+activate VecStore
+VecStore -> VecStore : 関連チャンクID特定
+VecStore -> VecStore : _remove_documents(ids)
+VecStore -> VecStore : 永続化
+VecStore --> Ledge
+deactivate VecStore
+
+Ledge -> KWStore : remove_document(doc_id)
+activate KWStore
+KWStore -> KWStore : インデックスから削除
+KWStore -> KWStore : 永続化
+KWStore --> Ledge
+deactivate KWStore
+
+Ledge --> Caller
+deactivate Ledge
 @enduml
 ```
 
-## 2. 検索機能
+### 3.4 主要な引数
+*   `doc_id` (str): 削除するドキュメントの（親）ID。
 
-### 2.1 ハイブリッド検索（UC-04）
-#### ユースケース手順
-1. ユーザーが検索クエリを入力
-2. システムがクエリを前処理
-3. システムがベクトル検索を実行
-4. システムがキーワード検索を実行
-5. システムが結果を統合
-6. システムがスコアリングを実行
-7. システムが結果を返却
+## 4. 検索 (`search`)
 
-#### ユースケースフロー図
+### 4.1 機能概要
+指定されたクエリと検索モードに基づき、ベクトルストアおよび/またはキーワードストアから関連ドキュメントを検索し、結果を統合（ハイブリッドモードの場合）して返します。
+
+### 4.2 ユースケース手順
+1.  呼び出し元が `ledge.search(query, search_mode, top_k, ...)` を実行。
+2.  `FinderLedge` は内部の `Finder` インスタンスの `search` メソッドを呼び出す。
+3.  `Finder` は `FinderLedge` からベクトルストアとキーワードストアの Retriever を取得。
+4.  指定された `search_mode` に応じて検索を実行:
+    *   `hybrid`: Vector Retriever と Keyword Retriever の両方で検索を実行し、それぞれの結果を Reciprocal Rank Fusion (RRF) を用いて統合・ランキング。
+    *   `vector`: Vector Retriever のみで検索を実行。
+    *   `keyword`: Keyword Retriever のみで検索を実行。
+5.  検索結果（スコア情報を含む `Document` オブジェクトのリスト）を指定された `top_k` の数だけ返す。
+
+### 4.3 シーケンス図
+
 ```plantuml
 @startuml
-actor User
-participant "UserAPIInterface" as API
-participant "SearchService" as SS
-participant "SearchModel" as SM
-participant "VectorDocumentStore" as VS
-participant "BM25Index" as BM25
-participant "EmbeddingService" as ES
+actor Caller
+participant "FinderLedge" as Ledge
+participant "Finder" as Finder
+participant "Vector Retriever" as VecRetriever
+participant "Keyword Retriever" as KWRetriever
+participant "ReciprocalRankFusion" as RRF
 
-User -> API: 検索クエリ入力
-API -> SS: 検索要求
-SS -> SM: クエリ前処理
-SM -> ES: クエリ埋め込み
-ES --> SM: クエリベクトル
-SM -> VS: ベクトル検索
-SM -> BM25: キーワード検索
-VS --> SM: ベクトル結果
-BM25 --> SM: キーワード結果
-SM -> SM: 結果統合
-SM -> SM: スコアリング
-SM --> SS: 検索結果
-SS --> API: 結果返却
-API --> User: 結果表示
-@enduml
-```
+Caller -> Ledge : search(query, mode, k, ...)
+activate Ledge
+Ledge -> Finder : search(query, mode, k, ...)
+activate Finder
+Finder -> Ledge : get_vector_retriever()
+activate Ledge
+Ledge --> Finder : VecRetriever
+deactivate Ledge
+Finder -> Ledge : get_keyword_retriever()
+activate Ledge
+Ledge --> Finder : KWRetriever
+deactivate Ledge
 
-### 2.2 検索モード選択（UC-05）
-#### ユースケース手順
-1. ユーザーが検索モードを選択
-2. システムがモードを設定
-3. システムが検索を実行
-4. システムが結果を返却
-
-#### ユースケースフロー図
-```plantuml
-@startuml
-actor User
-participant "UserAPIInterface" as API
-participant "SearchService" as SS
-participant "SearchModel" as SM
-participant "VectorDocumentStore" as VS
-participant "BM25Index" as BM25
-participant "EmbeddingService" as ES
-
-User -> API: 検索モード選択
-API -> SS: モード設定
-SS -> SM: モード設定
-alt ハイブリッドモード
-    SM -> VS: ベクトル検索
-    SM -> BM25: キーワード検索
-    VS --> SM: ベクトル結果
-    BM25 --> SM: キーワード結果
-    SM -> SM: 結果統合
-else セマンティックモード
-    SM -> VS: ベクトル検索
-    VS --> SM: ベクトル結果
-else キーワードモード
-    SM -> BM25: キーワード検索
-    BM25 --> SM: キーワード結果
+alt search_mode == "hybrid"
+    Finder -> VecRetriever : get_relevant_documents(query, k_vector, filter)
+    activate VecRetriever
+    VecRetriever --> Finder : vec_results
+    deactivate VecRetriever
+    Finder -> KWRetriever : get_relevant_documents(query, k_keyword)
+    activate KWRetriever
+    KWRetriever --> Finder : kw_results
+    deactivate KWRetriever
+    Finder -> RRF : combine_results(vec_results, kw_results)
+    activate RRF
+    RRF --> Finder : combined_results
+    deactivate RRF
+    Finder -> Finder : Rank and select top_k
+else search_mode == "vector"
+    Finder -> VecRetriever : get_relevant_documents(query, k_vector, filter)
+    activate VecRetriever
+    VecRetriever --> Finder : vec_results
+    deactivate VecRetriever
+    Finder -> Finder : Select top_k
+else search_mode == "keyword"
+    Finder -> KWRetriever : get_relevant_documents(query, k_keyword)
+    activate KWRetriever
+    KWRetriever --> Finder : kw_results
+    deactivate KWRetriever
+    Finder -> Finder : Select top_k
 end
-SM -> SM: スコアリング
-SM --> SS: 検索結果
-SS --> API: 結果返却
-API --> User: 結果表示
+
+Finder --> Ledge : final_results (List[Document])
+deactivate Finder
+Ledge --> Caller : final_results
+deactivate Ledge
 @enduml
 ```
 
-### 2.3 関連コンテキスト取得（UC-06）
-#### ユースケース手順
-1. LLMエージェントがコンテキスト要求
-2. システムが検索を実行
-3. システムが結果を構造化
-4. システムがコンテキストを生成
-5. システムが結果を返却
+### 4.4 主要な引数
+*   `query` (str): 検索クエリ文字列。
+*   `search_mode` (Literal["hybrid", "vector", "keyword"]): 検索モード。
+*   `top_k` (int): 返す結果の最大数。
+*   `k_vector` (int): ベクトル検索で内部的に取得する候補数。
+*   `k_keyword` (int): キーワード検索で内部的に取得する候補数。
+*   `vector_filter` (Dict): ベクトル検索時のメタデータフィルター。
 
-#### ユースケースフロー図
+### 4.5 戻り値
+*   `List[Document]`: 検索結果のドキュメントリスト。メタデータには検索スコア (`relevance_score`) が含まれる。
+
+## 5. コンテキスト取得 (`get_context`)
+
+### 5.1 機能概要
+指定されたクエリで検索を実行し、取得したドキュメントの内容を結合して単一のテキストコンテキストとして返します。
+
+### 5.2 ユースケース手順
+1.  呼び出し元が `ledge.get_context(query, ...)` を実行。
+2.  `FinderLedge` は内部的に `search` メソッドを呼び出して関連ドキュメントを取得。
+3.  取得したドキュメントリストから各ドキュメントの `page_content` を抽出。
+4.  抽出したテキストコンテンツを指定されたセパレータ（デフォルトは `\n\n`）で結合。
+5.  結合されたコンテキスト文字列を返す。
+
+### 5.3 シーケンス図
+
 ```plantuml
 @startuml
-participant "LLM Agent" as Agent
-participant "OpenAIAgentsInterface" as OAI
-participant "SearchService" as SS
-participant "SearchModel" as SM
-participant "VectorDocumentStore" as VS
-participant "BM25Index" as BM25
-participant "EmbeddingService" as ES
+actor Caller
+participant "FinderLedge" as Ledge
 
-Agent -> OAI: コンテキスト要求
-OAI -> SS: 検索要求
-SS -> SM: クエリ前処理
-SM -> ES: クエリ埋め込み
-ES --> SM: クエリベクトル
-SM -> VS: ベクトル検索
-SM -> BM25: キーワード検索
-VS --> SM: ベクトル結果
-BM25 --> SM: キーワード結果
-SM -> SM: 結果統合
-SM -> SM: スコアリング
-SM -> SM: コンテキスト生成
-SM --> SS: 構造化結果
-SS --> OAI: コンテキスト返却
-OAI --> Agent: コンテキスト提供
+Caller -> Ledge : get_context(query, ...)
+activate Ledge
+Ledge -> Ledge : search(query, ...)
+activate Ledge
+Ledge --> Ledge : documents (List[Document])
+deactivate Ledge
+Ledge -> Ledge : page_content を抽出
+Ledge -> Ledge : コンテキスト文字列を結合
+Ledge --> Caller : context (str)
+deactivate Ledge
 @enduml
 ```
 
-## 3. インデックス管理機能
+### 5.4 主要な引数
+*   `query` (str): 検索クエリ文字列。
+*   `max_tokens` (int): (現状未実装だが将来的に) コンテキストの最大トークン数を制限するための引数。
+*   その他 `search` メソッドと同じ引数 (`search_mode`, `top_k` など)。
 
-### 3.1 インデックス永続化（UC-07）
-#### ユースケース手順
-1. システムがインデックス更新を検知
-2. システムがインデックスをシリアライズ
-3. システムがファイルに保存
-4. システムが完了を通知
+### 5.5 戻り値
+*   `str`: 結合されたコンテキスト文字列。
 
-#### ユースケースフロー図
+## 6. Retriever 取得 (`as_retriever`)
+
+### 6.1 機能概要
+`FinderLedge` インスタンスを LangChain の `BaseRetriever` インターフェース互換のオブジェクトとして返します。これにより、LangChain の他のコンポーネント（例: `RetrievalQA` チェーン）と容易に統合できます。
+
+### 6.2 ユースケース手順
+1.  呼び出し元が `ledge.as_retriever(**search_kwargs)` を実行。
+2.  `FinderLedge` は、自身をラップする `BaseRetriever` のサブクラスインスタンスを生成して返す。
+3.  返された Retriever の `get_relevant_documents` または `invoke` メソッドが呼び出されると、内部的に `FinderLedge` の `search` メソッドが `search_kwargs` を用いて実行される。
+
+### 6.3 シーケンス図
+
 ```plantuml
 @startuml
-participant "IndexManager" as IM
-participant "VectorDocumentStore" as VS
-participant "BM25Index" as BM25
-participant "FileSystem" as FS
+actor Caller
+participant "FinderLedge" as Ledge
+participant "FinderLedgeRetriever\n(BaseRetriever)" as Retriever
 
-IM -> VS: インデックス取得
-VS --> IM: ベクトルインデックス
-IM -> BM25: インデックス取得
-BM25 --> IM: キーワードインデックス
-IM -> IM: シリアライズ
-IM -> FS: ファイル保存
-FS --> IM: 保存完了
+Caller -> Ledge : as_retriever(**search_kwargs)
+activate Ledge
+Ledge -> Retriever : __init__(finderledge=self, **search_kwargs)
+activate Retriever
+Retriever --> Ledge : retriever_instance
+deactivate Retriever
+Ledge --> Caller : retriever_instance
+deactivate Ledge
+
+... 後続処理 ...
+
+Caller -> Retriever : get_relevant_documents(query)
+activate Retriever
+Retriever -> Ledge : search(query, **self.search_kwargs)
+activate Ledge
+Ledge --> Retriever : documents (List[Document])
+deactivate Ledge
+Retriever --> Caller : documents
+deactivate Retriever
 @enduml
 ```
 
-### 3.2 インデックスロード（UC-08）
-#### ユースケース手順
-1. システムが起動
-2. システムがインデックスファイルを検索
-3. システムがファイルを読み込み
-4. システムがインデックスを復元
-5. システムが完了を通知
+### 6.4 主要な引数
+*   `**search_kwargs`: `search` メソッドに渡されるキーワード引数 (`search_mode`, `top_k` など)。
 
-#### ユースケースフロー図
-```plantuml
-@startuml
-participant "IndexManager" as IM
-participant "FileSystem" as FS
-participant "VectorDocumentStore" as VS
-participant "BM25Index" as BM25
-
-IM -> FS: インデックスファイル検索
-FS --> IM: ファイル一覧
-IM -> FS: ファイル読み込み
-FS --> IM: インデックスデータ
-IM -> IM: デシリアライズ
-IM -> VS: ベクトルインデックス復元
-IM -> BM25: キーワードインデックス復元
-VS --> IM: 復元完了
-BM25 --> IM: 復元完了
-@enduml
-```
-
-### 3.3 インデックス更新（UC-09）
-#### ユースケース手順
-1. システムが変更を検知
-2. システムが差分を計算
-3. システムがインデックスを更新
-4. システムがキャッシュを更新
-5. システムが完了を通知
-
-#### ユースケースフロー図
-```plantuml
-@startuml
-participant "IndexManager" as IM
-participant "Document" as Doc
-participant "VectorDocumentStore" as VS
-participant "BM25Index" as BM25
-participant "FileSystem" as FS
-
-Doc -> IM: 変更通知
-IM -> Doc: 差分計算
-Doc --> IM: 差分データ
-IM -> VS: ベクトル更新
-IM -> BM25: キーワード更新
-VS --> IM: 更新完了
-BM25 --> IM: 更新完了
-IM -> FS: キャッシュ更新
-FS --> IM: 更新完了
-@enduml
-```
-
-## 4. OpenAI Agents SDK連携機能
-
-### 4.1 ツール統合（UC-10）
-#### ユースケース手順
-1. エージェントがツールを要求
-2. システムがツールを提供
-3. エージェントがツールを使用
-4. システムが結果を返却
-
-#### ユースケースフロー図
-```plantuml
-@startuml
-participant "LLM Agent" as Agent
-participant "OpenAIAgentsInterface" as OAI
-participant "DocumentManager" as DM
-participant "SearchService" as SS
-participant "IndexManager" as IM
-
-Agent -> OAI: ツール要求
-OAI -> DM: 文書管理ツール提供
-OAI -> SS: 検索ツール提供
-OAI -> IM: インデックス管理ツール提供
-DM --> OAI: ツール定義
-SS --> OAI: ツール定義
-IM --> OAI: ツール定義
-OAI --> Agent: ツール提供
-Agent -> OAI: ツール使用
-OAI -> DM: 文書操作
-OAI -> SS: 検索実行
-OAI -> IM: インデックス操作
-DM --> OAI: 操作結果
-SS --> OAI: 検索結果
-IM --> OAI: 操作結果
-OAI --> Agent: 実行結果
-@enduml
-```
-
-### 4.2 コンテキスト統合（UC-11）
-#### ユースケース手順
-1. エージェントがコンテキストを要求
-2. システムが検索を実行
-3. システムがコンテキストを生成
-4. システムが結果を返却
-
-#### ユースケースフロー図
-```plantuml
-@startuml
-participant "LLM Agent" as Agent
-participant "OpenAIAgentsInterface" as OAI
-participant "SearchService" as SS
-participant "SearchModel" as SM
-participant "VectorDocumentStore" as VS
-participant "BM25Index" as BM25
-
-Agent -> OAI: コンテキスト要求
-OAI -> SS: 検索要求
-SS -> SM: クエリ前処理
-SM -> VS: ベクトル検索
-SM -> BM25: キーワード検索
-VS --> SM: ベクトル結果
-BM25 --> SM: キーワード結果
-SM -> SM: 結果統合
-SM -> SM: コンテキスト生成
-SM --> SS: コンテキスト
-SS --> OAI: コンテキスト返却
-OAI --> Agent: コンテキスト提供
-@enduml
-```
-
-### 4.3 LangChain連携（UC-12）
-#### ユースケース手順
-1. ユーザーがLangChainを使用
-2. システムがRetrieverを提供
-3. ユーザーが検索を実行
-4. システムが結果を返却
-
-#### ユースケースフロー図
-```plantuml
-@startuml
-actor User
-participant "LangChainInterface" as LC
-participant "SearchService" as SS
-participant "SearchModel" as SM
-participant "VectorDocumentStore" as VS
-participant "BM25Index" as BM25
-
-User -> LC: LangChain使用
-LC -> SS: Retriever提供
-SS -> SM: 検索設定
-SM -> VS: ベクトル検索
-SM -> BM25: キーワード検索
-VS --> SM: ベクトル結果
-BM25 --> SM: キーワード結果
-SM -> SM: 結果統合
-SM --> SS: 検索結果
-SS --> LC: LangChain形式で返却
-LC --> User: 結果表示
-@enduml
-``` 
+### 6.5 戻り値
+*   `BaseRetriever`: LangChain 互換の Retriever インスタンス。 

@@ -1,468 +1,242 @@
 # FinderLedge 使い方ガイド
 
 ## 概要
-FinderLedgeは、OpenAI Agents SDKと連携して文書コンテキストを管理するためのPythonライブラリです。文書の自動インデックス作成、ハイブリッド検索（ベクトル検索とBM25検索の組み合わせ）、文書の追加・削除、永続化などの機能を提供します。
+FinderLedgeは、ファイルやディレクトリからドキュメントを読み込み、ベクトル検索とキーワード検索を組み合わせたハイブリッド検索を容易に実現するためのPythonライブラリです。LangChainとの連携もスムーズに行えます。
 
 ## インストール
 ```bash
 pip install finderledge
 ```
 
+(または、プロジェクトの依存関係に追加してください)
+
 ## 基本的な使い方
 
 ### 1. 初期化
+`FinderLedge` を利用する前に、環境変数または `FinderLedge` のコンストラクタ引数で設定を行います。
+
+**環境変数での設定例:**
+```bash
+export OPENAI_API_KEY="your-api-key" # OpenAI を使う場合
+export FINDERLEDGE_PERSIST_DIRECTORY="./finder_data" # データ保存場所 (デフォルト)
+export FINDERLEDGE_VECTOR_STORE_PROVIDER="chroma"  # ベクトルストア (chroma or faiss)
+export FINDERLEDGE_EMBEDDING_PROVIDER="openai" # 埋め込みモデル (openai, ollama, huggingface)
+export FINDERLEDGE_EMBEDDING_MODEL_NAME="text-embedding-3-small" # モデル名
+```
+
+**Pythonコードでの初期化例:**
 ```python
 from finderledge import FinderLedge
 
-# FinderLedgeのインスタンスを作成
-finder = FinderLedge(
-    db_name="my_documents",  # データベース名
-    persist_dir="data",      # データの保存ディレクトリ
-    chunk_size=1000,         # テキストチャンクのサイズ
-    chunk_overlap=200        # チャンク間の重複
+# 環境変数またはデフォルト値を使用
+ledge = FinderLedge()
+
+# または、引数で設定を上書き
+ledge = FinderLedge(
+    persist_directory="./my_index_data",
+    vector_store_provider="faiss",
+    embedding_provider="huggingface",
+    embedding_model_name="sentence-transformers/all-MiniLM-L6-v2",
+    chunk_size=500,
+    chunk_overlap=50
 )
 ```
 
-### 2. 文書の追加
+*   `persist_directory`: インデックスデータが保存されるディレクトリです。
+*   `vector_store_provider`: `chroma` または `faiss` を選択できます。
+*   `keyword_store_provider`: 現在は `bm25` のみサポートされています。
+*   `embedding_provider`: `openai`, `ollama`, `huggingface` から選択できます。
+*   `embedding_model_name`: 選択したプロバイダーに対応するモデル名を指定します。
+*   `chunk_size`, `chunk_overlap`: ドキュメント分割時のチャンクサイズとオーバーラップを指定します。
+
+### 2. ドキュメントの追加
+ファイルパス、ディレクトリパス、または LangChain の `Document` オブジェクト（単一またはリスト）を指定してドキュメントを追加します。内部で自動的にテキスト抽出、分割、インデックス作成（ベクトルストアとキーワードストアの両方）が行われます。
+
 ```python
-# テキストファイルの追加
-finder.add_document(
-    file_path="path/to/document.txt",
-    title="文書タイトル",
-    metadata={"author": "著者名", "date": "2024-03-26"}
+from langchain_core.documents import Document
+
+# ファイルパスから追加
+parent_ids_file = ledge.add_document("path/to/your/document.md")
+print(f"追加されたドキュメント (ファイル): {parent_ids_file}")
+
+# ディレクトリパスから追加 (再帰的に .txt ファイルを検索)
+parent_ids_dir = ledge.add_document("path/to/your/docs_folder")
+print(f"追加されたドキュメント (ディレクトリ): {parent_ids_dir}")
+
+# Document オブジェクトから追加
+doc = Document(page_content="これはテストドキュメントです。", metadata={"source": "manual", "category": "test"})
+parent_ids_obj = ledge.add_document(doc)
+print(f"追加されたドキュメント (オブジェクト): {parent_ids_obj}")
+
+# Document リストから追加
+docs = [
+    Document(page_content="ドキュメント1の内容", metadata={"id": "doc1"}),
+    Document(page_content="ドキュメント2の内容", metadata={"id": "doc2"})
+]
+parent_ids_list = ledge.add_document(docs)
+print(f"追加されたドキュメント (リスト): {parent_ids_list}")
+```
+*   `add_document` は、追加された元のドキュメントに対応する（親）IDのリストを返します。
+*   ファイルやディレクトリを追加する場合、`DocumentLoader` が内部で使用され、可能なファイル形式が自動的に処理されます。
+*   `Document` オブジェクトを直接渡す場合、その `metadata` が保持されます。
+
+### 3. ドキュメントの検索
+クエリ文字列と検索モードを指定してドキュメントを検索します。
+
+```python
+# ハイブリッド検索 (デフォルト)
+results_hybrid = ledge.search(
+    query="ハイブリッド検索とは？",
+    top_k=5
+)
+print("\n--- ハイブリッド検索結果 ---")
+for doc in results_hybrid:
+    print(f"Score: {doc.metadata.get('relevance_score', 'N/A'):.4f}, Source: {doc.metadata.get('source', 'N/A')}")
+    # print(doc.page_content[:100] + "...") # 内容も表示する場合
+
+# ベクトル検索のみ
+results_vector = ledge.search(
+    query="意味的に近い文書を探す",
+    search_mode="vector",
+    top_k=3
+)
+print("\n--- ベクトル検索結果 ---")
+for doc in results_vector:
+    print(f"Score: {doc.metadata.get('relevance_score', 'N/A'):.4f}, Source: {doc.metadata.get('source', 'N/A')}")
+
+# キーワード検索のみ
+results_keyword = ledge.search(
+    query="特定のキーワードを含む文書",
+    search_mode="keyword",
+    top_k=3
+)
+print("\n--- キーワード検索結果 ---")
+for doc in results_keyword:
+    print(f"Score: {doc.metadata.get('relevance_score', 'N/A'):.4f}, Source: {doc.metadata.get('source', 'N/A')}")
+
+# メタデータでフィルタリング (ベクトル検索またはハイブリッド検索時)
+results_filtered = ledge.search(
+    query="テストカテゴリの文書",
+    search_mode="vector",
+    top_k=2,
+    vector_filter={"category": "test"} # Chroma/FAISS がサポートする形式で指定
+)
+print("\n--- フィルタリング検索結果 ---")
+for doc in results_filtered:
+    print(f"Score: {doc.metadata.get('relevance_score', 'N/A'):.4f}, Source: {doc.metadata.get('source', 'N/A')}, Category: {doc.metadata.get('category')}")
+```
+*   `search_mode`: `hybrid` (デフォルト), `vector`, `keyword` を指定できます。
+*   `top_k`: 返す結果の最大数を指定します。
+*   `vector_filter`: ベクトルストアでの検索時にメタデータで結果を絞り込むために使用します。指定方法はベクトルストア（Chroma, FAISS）に依存します。
+*   検索結果の `Document` オブジェクトの `metadata` には、検索スコア (`relevance_score`) が含まれます。
+
+### 4. ドキュメントの削除
+追加時に返された（親）ドキュメントIDを指定して、関連するデータ（分割されたチャンクを含む）をベクトルストアとキーワードストアの両方から削除します。
+
+```python
+if parent_ids_file: # add_document の戻り値を使う例
+    doc_id_to_remove = parent_ids_file[0]
+    try:
+        ledge.remove_document(doc_id_to_remove)
+        print(f"\nドキュメント {doc_id_to_remove} を削除しました。")
+    except Exception as e:
+        print(f"ドキュメント削除中にエラー: {e}")
+```
+
+### 5. コンテキストの取得
+検索結果を結合して、単一のテキストコンテキストとして取得します。RAG (Retrieval-Augmented Generation) などでLLMに渡すコンテキストを生成するのに便利です。
+
+```python
+context = ledge.get_context(
+    query="主要な機能について教えて",
+    search_mode="hybrid",
+    top_k=3
+)
+print("\n--- 取得したコンテキスト ---")
+print(context)
+```
+
+## LangChain との連携
+`FinderLedge` は LangChain の `BaseRetriever` として簡単に利用できます。
+
+```python
+from langchain.chains import RetrievalQA
+from langchain_openai import ChatOpenAI # 例: OpenAI の LLM を使う場合
+
+# FinderLedge を Retriever として取得
+retriever = ledge.as_retriever(
+    search_mode="hybrid",
+    top_k=5,
+    # 必要に応じて k_vector, k_keyword, vector_filter も指定可能
 )
 
-# テキストの直接追加
-finder.add_text(
-    text="追加するテキスト",
-    title="文書タイトル",
-    metadata={"source": "手動入力"}
+# LangChain の QA チェーンを作成
+llm = ChatOpenAI(model_name="gpt-3.5-turbo-1106", temperature=0)
+qa_chain = RetrievalQA.from_chain_type(
+    llm=llm,
+    chain_type="stuff", # または "map_reduce" など
+    retriever=retriever,
+    return_source_documents=True
 )
 
-# ディレクトリ内の文書を一括追加
-finder.add_directory(
-    directory_path="path/to/documents",
-    file_pattern="*.txt",  # ファイルパターン（オプション）
-    recursive=True        # サブディレクトリも含める（オプション）
-)
-```
+# QA チェーンを実行
+query = "FinderLedge の初期化方法について教えてください。"
+result = qa_chain.invoke({"query": query})
 
-### 3. 文書の検索
-```python
-# ハイブリッド検索（デフォルト）
-results = finder.search(
-    query="検索クエリ",
-    top_k=5,              # 返す結果の数
-    search_mode="hybrid"  # 検索モード: "hybrid", "semantic", "keyword"
-)
-
-# 検索結果の処理
-for result in results:
-    print(f"スコア: {result.score}")
-    print(f"タイトル: {result.title}")
-    print(f"テキスト: {result.text}")
-    print(f"メタデータ: {result.metadata}")
-```
-
-### 4. 文書の削除
-```python
-# 文書IDによる削除
-finder.remove_document(document_id="doc_id")
-
-# タイトルによる削除
-finder.remove_document_by_title(title="文書タイトル")
-```
-
-### 5. 文書の取得
-```python
-# 文書IDによる取得
-doc = finder.get_document(document_id="doc_id")
-
-# タイトルによる取得
-doc = finder.get_document_by_title(title="文書タイトル")
-
-# 全文書の取得
-documents = finder.get_all_documents()
-```
-
-### 6. インデックスの永続化
-```python
-# インデックスの保存
-finder.persist()
-
-# インデックスの読み込み（初期化時に自動的に行われます）
-finder.load()
-```
-
-## document_idの取得方法
-
-### 1. 文書追加時の取得
-```python
-# 文書を追加し、document_idを取得
-document_id = finder.add_document(
-    file_path="path/to/document.txt",
-    title="文書タイトル",
-    metadata={"author": "著者名"}
-)
-print(f"追加された文書のID: {document_id}")
-```
-
-### 2. タイトルからの取得
-```python
-# タイトルから文書を検索し、document_idを取得
-doc = finder.get_document_by_title(title="文書タイトル")
-document_id = doc.id if doc else None
-```
-
-### 3. 検索結果からの取得
-```python
-# 検索を実行し、結果からdocument_idを取得
-results = finder.search(query="検索クエリ")
-for result in results:
-    document_id = result.id
-    print(f"検索結果の文書ID: {document_id}")
-```
-
-### 4. 全文書のIDリスト取得
-```python
-# 全文書を取得し、そのIDリストを作成
-documents = finder.get_all_documents()
-document_ids = [doc.id for doc in documents]
-print(f"全文書のID一覧: {document_ids}")
-```
-
-注意事項：
-- document_idは文書を一意に識別するための重要な情報です
-- 文書の削除や更新時に必要となります
-- 必要に応じてメタデータに保存することをお勧めします
-
-## 高度な使い方
-
-### 1. カスタム埋め込みモデルの使用
-```python
-from finderledge.embedding_model import OpenAIEmbeddingModel
-
-# カスタム埋め込みモデルの作成
-embedding_model = OpenAIEmbeddingModel(model="text-embedding-3-small")
-
-# FinderLedgeの初期化時に使用
-finder = FinderLedge(
-    embedding_model=embedding_model,
-    db_name="my_documents"
-)
-```
-
-### 2. 検索モードの切り替え
-```python
-# セマンティック検索（ベクトル検索のみ）
-results = finder.search(
-    query="検索クエリ",
-    search_mode="semantic"
-)
-
-# キーワード検索（BM25検索のみ）
-results = finder.search(
-    query="検索クエリ",
-    search_mode="keyword"
-)
-```
-
-### 3. メタデータによるフィルタリング
-```python
-# メタデータでフィルタリングして検索
-results = finder.search(
-    query="検索クエリ",
-    metadata_filter={"author": "著者名", "date": "2024-03-26"}
-)
-```
-
-### 4. 文書の更新
-```python
-# 文書の内容を更新
-finder.update_document(
-    document_id="doc_id",
-    text="新しいテキスト",
-    metadata={"updated": "2024-03-26"}
-)
+print(f"\n--- LangChain QA 結果 ({query}) ---")
+print("回答:", result["result"])
+# print("\n参照ドキュメント:")
+# for doc in result["source_documents"]:
+#     print(f"- {doc.metadata.get('source', 'N/A')}")
 ```
 
 ## 注意事項
 
-1. OpenAI APIの使用
-   - FinderLedgeはOpenAI APIを使用してテキストの埋め込みを生成します
-   - 環境変数`OPENAI_API_KEY`を設定する必要があります
-   - APIの使用には料金が発生します
+*   **APIキー**: `openai` プロバイダーを使用する場合、環境変数 `OPENAI_API_KEY` の設定が必要です。他のプロバイダーも同様に、必要な認証情報の設定が必要になる場合があります。
+*   **永続化**: インデックスデータは `persist_directory` で指定された場所に自動的に保存・ロードされます。手動での `persist()` や `load()` の呼び出しは不要です。
+*   **依存関係**: 使用するベクトルストア (`chroma`, `faiss`) や埋め込みモデルプロバイダー (`openai`, `ollama-python`, `sentence-transformers`) に応じて、追加のライブラリが必要になる場合があります。適宜インストールしてください。
+*   **更新**: ドキュメントの内容を更新したい場合は、一度 `remove_document` で削除してから、新しい内容で `add_document` を実行してください。
 
-2. データの永続化
-   - デフォルトでは`data`ディレクトリにデータが保存されます
-   - 重要なデータは定期的にバックアップすることをお勧めします
+## OpenAI Agents SDK との連携 (LangChain経由)
 
-3. メモリ使用量
-   - 大量の文書を扱う場合は、適切なチャンクサイズを設定してください
-   - 必要に応じて`chunk_size`と`chunk_overlap`を調整してください
-
-4. 検索の精度
-   - ハイブリッド検索は、セマンティック検索とキーワード検索の両方の利点を活かします
-   - 用途に応じて適切な検索モードを選択してください
-
-## エラーハンドリング
+OpenAI Agents SDK と直接連携する機能は現在 `FinderLedge` にはありませんが、LangChain のツールとして `FinderLedge` の Retriever をラップすることで連携が可能です。
 
 ```python
-try:
-    # 文書の追加
-    finder.add_document(file_path="path/to/document.txt")
-except FileNotFoundError:
-    print("ファイルが見つかりません")
-except ValueError as e:
-    print(f"無効な入力: {e}")
-except Exception as e:
-    print(f"予期せぬエラー: {e}")
+from langchain.agents import AgentExecutor, create_openai_tools_agent
+from langchain_openai import ChatOpenAI
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain.tools.retriever import create_retriever_tool
+
+# 1. FinderLedge Retriever を取得 (前の例を参照)
+retriever = ledge.as_retriever(search_mode="hybrid", top_k=3)
+
+# 2. LangChain Retriever をツール化
+retriever_tool = create_retriever_tool(
+    retriever,
+    "finderledge_search",
+    "Searches and returns relevant document excerpts from FinderLedge knowledge base."
+)
+
+tools = [retriever_tool]
+
+# 3. OpenAI Functions Agent をセットアップ (LangChain の機能)
+llm = ChatOpenAI(model="gpt-3.5-turbo-1106", temperature=0)
+
+prompt = ChatPromptTemplate.from_messages([
+    ("system", "You are helpful assistant that uses the FinderLedge knowledge base."),
+    ("user", "{input}"),
+    MessagesPlaceholder(variable_name="agent_scratchpad"),
+])
+
+agent = create_openai_tools_agent(llm, tools, prompt)
+agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True)
+
+# 4. エージェントを実行
+response = agent_executor.invoke({"input": "FinderLedgeでドキュメントを追加する方法は？"})
+
+print("\n--- OpenAI Agent (via LangChain Tool) Response ---")
+print(response["output"])
 ```
 
-## パフォーマンス最適化
-
-1. チャンクサイズの調整
-   - 小さいチャンク: より細かい検索が可能
-   - 大きいチャンク: 処理が高速
-
-2. インデックスの最適化
-   - 定期的に`persist()`を呼び出してインデックスを保存
-   - 不要な文書は`remove_document()`で削除
-
-3. 検索モードの選択
-   - セマンティック検索: 意味的な類似性の検索
-   - キーワード検索: 高速な検索
-   - ハイブリッド検索: バランスの取れた検索 
-
-## OpenAI Agents SDKとの連携
-
-### 1. 基本的な連携方法
-```python
-from openai.agents import Agent
-from finderledge import FinderLedge
-
-# FinderLedgeのインスタンスを作成
-finder = FinderLedge(db_name="my_documents")
-
-# エージェントの作成
-agent = Agent(
-    name="document_assistant",
-    description="文書検索と分析を行うアシスタント",
-    tools=[
-        finder.search,  # 検索機能をツールとして追加
-        finder.add_document,  # 文書追加機能をツールとして追加
-        finder.remove_document  # 文書削除機能をツールとして追加
-    ]
-)
-
-# エージェントとの対話
-response = agent.chat(
-    "プロジェクトの要件文書を探して、主要な要件をまとめてください。"
-)
-print(response)
-```
-
-### 2. カスタムツールの作成
-```python
-from openai.agents import Tool
-from finderledge import FinderLedge
-
-# FinderLedgeのインスタンスを作成
-finder = FinderLedge(db_name="my_documents")
-
-# カスタムツールの作成
-def search_documents(query: str, top_k: int = 5) -> str:
-    """
-    Search for documents and return formatted results
-    文書を検索して結果を整形して返す
-
-    Args:
-        query (str): Search query / 検索クエリ
-        top_k (int): Number of results to return / 返す結果の数
-
-    Returns:
-        str: Formatted search results / 整形された検索結果
-    """
-    results = finder.search(query=query, top_k=top_k)
-    formatted_results = []
-    for result in results:
-        formatted_results.append(
-            f"タイトル: {result.title}\n"
-            f"スコア: {result.score}\n"
-            f"テキスト: {result.text}\n"
-            f"メタデータ: {result.metadata}\n"
-            "---"
-        )
-    return "\n".join(formatted_results)
-
-# ツールの登録
-search_tool = Tool(
-    name="search_documents",
-    description="文書を検索して結果を整形して返します",
-    function=search_documents
-)
-
-# エージェントの作成
-agent = Agent(
-    name="document_assistant",
-    description="文書検索と分析を行うアシスタント",
-    tools=[search_tool]
-)
-```
-
-### 3. コンテキスト管理との連携
-```python
-from openai.agents import Agent, RunContext
-from finderledge import FinderLedge
-
-# FinderLedgeのインスタンスを作成
-finder = FinderLedge(db_name="my_documents")
-
-# コンテキストの作成
-context = RunContext(
-    metadata={
-        "project": "プロジェクト名",
-        "user": "ユーザー名",
-        "timestamp": "2024-03-26"
-    }
-)
-
-# エージェントの作成
-agent = Agent(
-    name="document_assistant",
-    description="文書検索と分析を行うアシスタント",
-    tools=[finder.search],
-    context=context
-)
-
-# コンテキストを考慮した検索
-response = agent.chat(
-    "このプロジェクトの要件文書を探して、主要な要件をまとめてください。"
-)
-```
-
-### 4. エラーハンドリング
-```python
-from openai.agents import Agent
-from finderledge import FinderLedge
-
-# FinderLedgeのインスタンスを作成
-finder = FinderLedge(db_name="my_documents")
-
-# エラーハンドリング付きのツール
-def safe_search(query: str, top_k: int = 5) -> str:
-    """
-    Safely search for documents with error handling
-    エラーハンドリング付きで文書を安全に検索
-
-    Args:
-        query (str): Search query / 検索クエリ
-        top_k (int): Number of results to return / 返す結果の数
-
-    Returns:
-        str: Formatted search results or error message / 整形された検索結果またはエラーメッセージ
-    """
-    try:
-        results = finder.search(query=query, top_k=top_k)
-        if not results:
-            return "検索結果が見つかりませんでした。"
-        
-        formatted_results = []
-        for result in results:
-            formatted_results.append(
-                f"タイトル: {result.title}\n"
-                f"スコア: {result.score}\n"
-                f"テキスト: {result.text}\n"
-                "---"
-            )
-        return "\n".join(formatted_results)
-    except Exception as e:
-        return f"検索中にエラーが発生しました: {str(e)}"
-
-# ツールの登録
-search_tool = Tool(
-    name="safe_search",
-    description="エラーハンドリング付きで文書を安全に検索します",
-    function=safe_search
-)
-
-# エージェントの作成
-agent = Agent(
-    name="document_assistant",
-    description="文書検索と分析を行うアシスタント",
-    tools=[search_tool]
-)
-```
-
-### 5. 非同期処理のサポート
-```python
-from openai.agents import Agent
-from finderledge import FinderLedge
-import asyncio
-
-# FinderLedgeのインスタンスを作成
-finder = FinderLedge(db_name="my_documents")
-
-# 非同期ツールの作成
-async def async_search(query: str, top_k: int = 5) -> str:
-    """
-    Asynchronously search for documents
-    非同期で文書を検索
-
-    Args:
-        query (str): Search query / 検索クエリ
-        top_k (int): Number of results to return / 返す結果の数
-
-    Returns:
-        str: Formatted search results / 整形された検索結果
-    """
-    # 非同期処理をシミュレート
-    await asyncio.sleep(1)
-    results = finder.search(query=query, top_k=top_k)
-    return "\n".join([f"タイトル: {r.title}\nテキスト: {r.text}" for r in results])
-
-# ツールの登録
-search_tool = Tool(
-    name="async_search",
-    description="非同期で文書を検索します",
-    function=async_search,
-    is_async=True
-)
-
-# エージェントの作成
-agent = Agent(
-    name="document_assistant",
-    description="文書検索と分析を行うアシスタント",
-    tools=[search_tool]
-)
-
-# 非同期での実行
-async def main():
-    response = await agent.achat(
-        "プロジェクトの要件文書を探して、主要な要件をまとめてください。"
-    )
-    print(response)
-
-# 非同期処理の実行
-asyncio.run(main())
-```
-
-### 6. ベストプラクティス
-
-1. ツールの設計
-   - 各ツールは単一の責務を持つように設計
-   - エラーハンドリングを適切に実装
-   - 非同期処理が必要な場合は`is_async=True`を設定
-
-2. コンテキストの活用
-   - プロジェクトやユーザー情報をコンテキストに含める
-   - 検索結果のフィルタリングにコンテキストを活用
-
-3. パフォーマンスの考慮
-   - 大量の文書を扱う場合は非同期処理を検討
-   - 検索結果のキャッシュを実装
-
-4. セキュリティ
-   - 機密情報はコンテキストに含めない
-   - ユーザー認証を適切に実装
+この例では、LangChain の `create_retriever_tool` を使って `FinderLedge` の Retriever をエージェントが利用可能なツールに変換し、LangChain の Agent 機能と組み合わせています。
  
