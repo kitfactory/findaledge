@@ -58,17 +58,17 @@ def vector_store_config():
         },
 
         # Chroma specific settings
-        "FINDERLEDGE_CHROMA_PERSIST_DIRECTORY": {
-            "description": "(Chroma only) Path to the directory for persisting Chroma data. (Chroma のみ) Chromaデータを永続化するディレクトリへのパス。",
+        "FINDERLEDGE_CHROMA_SUBDIR": {
+            "description": "(Chroma only) Subdirectory name within the main persist directory for Chroma data. (Chroma のみ) Chromaデータを格納するメイン永続化ディレクトリ内のサブディレクトリ名。",
             "required": False,
-            "default": "./chroma_db" # デフォルトの永続化パス
+            "default": "chroma_db"
         },
 
         # FAISS specific settings
-        "FINDERLEDGE_FAISS_INDEX_PATH": {
-            "description": "(FAISS only) Path to the FAISS index file. (FAISS のみ) FAISSインデックスファイルへのパス。",
+        "FINDERLEDGE_FAISS_SUBDIR": {
+            "description": "(FAISS only) Subdirectory name within the main persist directory for FAISS index files. (FAISS のみ) FAISSインデックスファイルを格納するメイン永続化ディレクトリ内のサブディレクトリ名。",
             "required": False,
-            "default": "./faiss_index.idx" # デフォルトのインデックスファイルパス
+            "default": "faiss_db"
         },
 
         # Pinecone specific settings
@@ -86,6 +86,31 @@ def vector_store_config():
             "description": "(Pinecone only) Index name in Pinecone. (Pinecone のみ) Pineconeのインデックス名。",
             "required": False,
             "default": ""
+        }
+    }
+
+@oneenv
+def storage_config():
+    """Settings for specific storage paths / components.
+    特定のストレージパス/コンポーネントの設定"""
+    return {
+        "FINDERLEDGE_BM25S_SUBDIR": {
+            "description": "Subdirectory name within the main persist directory for the BM25s index file. メイン永続化ディレクトリ内のBM25sインデックスファイル用サブディレクトリ名。",
+            "required": False,
+            "default": "bm25s_index"
+        }
+    }
+
+@oneenv
+def search_config():
+    """Settings related to search behavior.
+    検索動作に関する設定"""
+    return {
+        "FINDERLEDGE_DEFAULT_SEARCH_MODE": {
+            "description": "Default search mode used if not specified in the search method ('hybrid', 'vector', 'keyword'). searchメソッドで指定されなかった場合に使用されるデフォルトの検索モード ('hybrid', 'vector', 'keyword')。",
+            "required": False,
+            "default": "hybrid", # ハイブリッドをデフォルトに
+            "choices": ["hybrid", "vector", "keyword"]
         }
     }
 

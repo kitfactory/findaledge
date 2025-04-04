@@ -1,364 +1,379 @@
 """
-FinderLedge - Document context management library for OpenAI Agents SDK
-FinderLedge - OpenAI Agents SDKのための文書コンテキスト管理ライブラリ
+FinderLedge - Document context management library using multiple retrievers and RRF reranking.
+FinderLedge - 複数のリトリーバーとRRFリランキングを使用する文書コンテキスト管理ライブラリ。
 
-This module provides a library for managing document contexts in OpenAI Agents SDK,
-supporting features like automatic document indexing, hybrid search, and persistence.
-このモジュールは、OpenAI Agents SDKで文書コンテキストを管理するための
-ライブラリを提供し、自動文書インデックス作成、ハイブリッド検索、
-永続化などの機能をサポートします。
+This module provides a high-level interface for managing document contexts,
+leveraging vector stores and keyword search (BM25s) internally,
+and reranking results using the Finder class.
+このモジュールは、文書コンテキストを管理するための高レベルインターフェースを提供し、
+内部的にベクトルストアとキーワード検索（BM25s）を活用し、
+Finderクラスを使用して結果をリランキングします。
 """
 
-import json
-from datetime import datetime
+import os
 from pathlib import Path
 from typing import Dict, List, Optional, Union, Any
-import chromadb
-from bm25s import BM25, tokenize
-from pydantic import BaseModel
-import uuid
-import shutil
 
-from .document import Document
-from .embedding_model import EmbeddingModel, OpenAIEmbeddingModel
-from .text_splitter import TextSplitter
+# LangChain document standard
+from langchain_core.documents import Document as LangchainDocument
+
+# Project components
+from .finder import Finder, SearchResult # The new RRF reranker
+from .document_store.document_store import BaseDocumentStore
+from .document_store.vector_document_store import VectorDocumentStore, VectorStoreRetriever
+from .document_store.bm25s import BM25sStore, BM25sRetriever # Import retriever as well
+from .embeddings_factory import EmbeddingModelFactory
 from .document_loader import DocumentLoader
+from .document_splitter import DocumentSplitter, DocumentType
+from .tokenizer import Tokenizer # Needed for BM25s
+
 
 class FinderLedge:
     """
-    Document context management system
-    文書コンテキスト管理システム
+    Document context management system using multiple retrievers and RRF.
+    複数のリトリーバーとRRFを使用する文書コンテキスト管理システム。
 
-    This class provides functionality for managing document contexts,
-    including document indexing, search, and persistence.
-    このクラスは、文書インデックス作成、検索、永続化を含む
-    文書コンテキスト管理機能を提供します。
+    Manages document loading, splitting, indexing into multiple stores (vector and keyword),
+    and provides a unified search interface via RRF reranking.
+    文書のロード、分割、複数のストア（ベクトルおよびキーワード）へのインデックス作成を管理し、
+RRFリランキングを介して統一された検索インターフェースを提供します。
     """
 
     def __init__(
         self,
-        db_name: str = "finderledge",
+        *,
         persist_dir: str = "data",
-        embedding_model: Optional[EmbeddingModel] = None,
+        embedding_model_name: Optional[str] = None,
         chunk_size: int = 1000,
-        chunk_overlap: int = 200
+        chunk_overlap: int = 200,
+        vector_store_subdir: Optional[str] = None,
+        bm25_index_subdir: Optional[str] = None,
+        bm25_params: Optional[Dict[str, Any]] = None,
+        rrf_k: int = 60,
+        **kwargs: Any
     ):
         """
-        Initialize the FinderLedge system
-        FinderLedgeシステムを初期化
+        Initialize the FinderLedge system.
+        FinderLedgeシステムを初期化します。
 
         Args:
-            db_name (str): Name of the database / データベース名
-            persist_dir (str): Directory for persisting data / データを永続化するディレクトリ
-            embedding_model (Optional[EmbeddingModel]): Embedding model to use / 使用する埋め込みモデル
-            chunk_size (int): Size of text chunks / テキストチャンクのサイズ
-            chunk_overlap (int): Overlap between chunks / チャンク間の重複
+            persist_dir (str): Base directory for persisting all data.
+                               すべてのデータを永続化するベースディレクトリ。
+            embedding_model_name (Optional[str]): Name of the embedding model via EmbeddingModelFactory.
+                                                 If None, uses FINDERLEDGE_EMBEDDING_MODEL_NAME env var,
+                                                 or defaults to "text-embedding-3-small".
+                                        EmbeddingModelFactory経由で使用する埋め込みモデルの名前。
+                                        Noneの場合、環境変数 FINDERLEDGE_EMBEDDING_MODEL_NAME を使用するか、
+                                        デフォルトで "text-embedding-3-small" になります。
+            chunk_size (int): Target size of text chunks for splitting, similar to LangChain's TextSplitter.
+                              テキスト分割時の目標チャンクサイズ（LangChainのTextSplitterと同様）。
+            chunk_overlap (int): Overlap between text chunks, similar to LangChain's TextSplitter.
+                                 テキストチャンク間の重複（LangChainのTextSplitterと同様）。
+            vector_store_subdir (Optional[str]): Subdirectory for the vector store.
+                                                 If None, uses FINDERLEDGE_CHROMA_SUBDIR env var,
+                                                 or defaults to "chroma_db".
+                                       ベクトルストア用のサブディレクトリ。
+                                       Noneの場合、環境変数 FINDERLEDGE_CHROMA_SUBDIR を使用するか、
+                                       デフォルトで "chroma_db" になります。
+            bm25_index_subdir (Optional[str]): Subdirectory for the BM25s index.
+                                               If None, uses FINDERLEDGE_BM25S_SUBDIR env var,
+                                               or defaults to "bm25s_index".
+                                     BM25sインデックス用のサブディレクトリ。
+                                     Noneの場合、環境変数 FINDERLEDGE_BM25S_SUBDIR を使用するか、
+                                     デフォルトで "bm25s_index" になります。
+            bm25_params (Optional[Dict[str, Any]]): Parameters for BM25s initialization.
+                                                    BM25s初期化用のパラメータ。
+            rrf_k (int): Ranking constant for RRF calculation in Finder.
+                         FinderでのRRF計算のためのランキング定数。
+            **kwargs (Any): Additional keyword arguments for future extensions or component configurations.
+                            将来の拡張やコンポーネント設定のための追加キーワード引数。
         """
-        self.db_name = db_name
         self.persist_dir = Path(persist_dir)
         self.persist_dir.mkdir(parents=True, exist_ok=True)
+
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
 
-        # Initialize components
-        self.embedding_model = embedding_model or OpenAIEmbeddingModel()
-        self.text_splitter = TextSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
-        self.document_loader = DocumentLoader(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+        # Determine embedding model name to use
+        model_name_to_use = embedding_model_name or os.getenv("FINDERLEDGE_EMBEDDING_MODEL_NAME", "text-embedding-3-small")
 
-        # Initialize ChromaDB
-        self.chroma_client = chromadb.PersistentClient(path=str(self.persist_dir))
-        self.collection = self.chroma_client.get_or_create_collection(
-            name=db_name,
+        # Determine subdirectory names using environment variables as defaults
+        vector_subdir_to_use = vector_store_subdir or os.getenv("FINDERLEDGE_CHROMA_SUBDIR", "chroma_db")
+        bm25_subdir_to_use = bm25_index_subdir or os.getenv("FINDERLEDGE_BM25S_SUBDIR", "bm25s_index")
+
+        # Initialize components
+        self.embedding_factory = EmbeddingModelFactory()
+        self.embedding_model = self.embedding_factory.get_model(model_name_to_use)
+        # Assuming DocumentSplitter takes model name or tokenizer directly if needed
+        self.document_splitter = DocumentSplitter(
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+            # model_name=embedding_model_name # Pass model name if splitter needs it
+        )
+        self.document_loader = DocumentLoader() # Loader might not need chunk params directly
+
+        # Define paths for stores
+        vector_store_path = str(self.persist_dir / vector_subdir_to_use)
+        bm25_index_path = str(self.persist_dir / bm25_subdir_to_use / "bm25s_index.pkl")
+
+        # Initialize Document Stores
+        self.vector_store = VectorDocumentStore(
+            persist_directory=vector_store_path,
             embedding_function=self.embedding_model
         )
-        self.bm25_index = BM25([])
-        self.documents: Dict[str, Document] = {}
+        self.bm25_store = BM25sStore(
+            index_path=bm25_index_path,
+            **(bm25_params or {}) # Pass BM25 params
+        )
 
-        # Load persisted state if exists
-        self._load_state()
+        # List of managed document stores
+        self.document_stores: List[BaseDocumentStore] = [self.vector_store, self.bm25_store]
+
+        # Create Retrievers and store them individually
+        # Configure k for initial retrieval. This k might be overridden by search method's top_k if retriever supports it.
+        self.vector_retriever: BaseRetriever = self.vector_store.as_retriever(search_kwargs={'k': 50, 'filter': None}) # Base filter capability
+        self.bm25_retriever: BaseRetriever = self.bm25_store.as_retriever(k=50)
+
+        # Initialize the Finder (RRF Reranker) for hybrid search
+        self.rrf_finder = Finder( # Rename finder instance
+            retrievers=[self.vector_retriever, self.bm25_retriever],
+            rrf_k=rrf_k
+        )
+
+        print(f"FinderLedge initialized. Data directory: {self.persist_dir}")
+        print(f" Stores: VectorStore in '{vector_subdir_to_use}', BM25sStore in '{bm25_subdir_to_use}'")
+        print(f" Embedding model: {model_name_to_use}")
 
     def add_document(
         self,
-        content: Union[str, Document],
-        title: Optional[str] = None,
+        content_or_path: Union[str, Path],
+        doc_type: Optional[DocumentType] = None,
         metadata: Optional[Dict[str, Any]] = None
-    ) -> str:
+    ) -> List[str]:
         """
-        Add a document to the system
-        システムに文書を追加
+        Load, split, and add a document (or documents from a directory) to all managed stores.
+        文書（またはディレクトリ内の文書）をロード、分割し、管理対象のすべてのストアに追加します。
 
         Args:
-            content (Union[str, Document]): Document content or Document object / 文書内容または文書オブジェクト
-            title (Optional[str]): Document title / 文書タイトル
-            metadata (Optional[Dict[str, Any]]): Document metadata / 文書メタデータ
+            content_or_path (Union[str, Path]): Document content as a string, path to a single file, or path to a directory.
+                                                  文字列としての文書内容、単一ファイルへのパス、またはディレクトリへのパス。
+            doc_type (Optional[DocumentType]): The type of the document(s) if loading from string/path.
+                                                文字列/パスからロードする場合の文書タイプ。
+                                                If loading a directory, type is inferred from extension.
+                                                ディレクトリをロードする場合、タイプは拡張子から推測されます。
+            metadata (Optional[Dict[str, Any]]): Optional base metadata to add to all loaded documents/chunks.
+                                                   ロードされたすべての文書/チャンクに追加するオプションの基本メタデータ。
 
         Returns:
-            str: Document ID / 文書ID
+            List[str]: List of document IDs added to the stores.
+                       ストアに追加された文書IDのリスト。
         """
-        # Create document
-        if isinstance(content, Document):
-            doc = content
-        else:
-            doc = Document(
-                id=str(uuid.uuid4()),
-                content=content,
-                title=title or f"Document {len(self.documents) + 1}",
-                metadata=metadata or {}
-            )
+        print(f"Adding document(s) from: {content_or_path}")
+        # 1. Load document(s)
+        # DocumentLoader handles loading from string, file, or directory
+        loaded_docs: List[LangchainDocument] = self.document_loader.load(content_or_path, doc_type)
 
-        # Split content into chunks
-        chunks = self.text_splitter.split_text(doc.content)
-        doc.add_chunks(chunks)
+        if not loaded_docs:
+             print("No documents were loaded.")
+             return []
 
-        # Generate embeddings for chunks
-        embeddings = self.embedding_model.embed_documents(chunks)
-        doc.add_chunk_embeddings(embeddings)
+        # Add base metadata if provided
+        if metadata:
+            for doc in loaded_docs:
+                doc.metadata.update(metadata)
 
-        # Add to vector store
-        self.collection.add(
-            ids=[f"{doc.id}_{i}" for i in range(len(chunks))],
-            embeddings=embeddings,
-            metadatas=[{"doc_id": doc.id, "chunk_index": i} for i in range(len(chunks))],
-            documents=chunks
-        )
+        # 2. Split documents
+        all_split_docs: List[LangchainDocument] = []
+        for doc in loaded_docs:
+             # Use DocumentSplitter which handles different types if necessary
+             split_docs = self.document_splitter.split_documents([doc])
+             all_split_docs.extend(split_docs)
 
-        # Add to BM25 index
-        self.bm25_index.add_document(doc.id, doc.content)
+        if not all_split_docs:
+             print("No documents generated after splitting.")
+             return []
 
-        # Store document
-        self.documents[doc.id] = doc
+        # Ensure unique IDs for split chunks if splitter doesn't handle it
+        # (VectorStore/BM25sStore add_documents might handle IDs anyway)
+        # For simplicity, assume stores handle ID generation or accept provided ones.
 
-        # Persist state
-        self._persist_state()
+        # 3. Add to all managed stores
+        added_ids_combined = set()
+        for store in self.document_stores:
+            print(f"Adding {len(all_split_docs)} split documents to {store.__class__.__name__}...")
+            try:
+                # We pass the split documents (chunks). The stores should handle ID assignment.
+                added_ids = store.add_documents(all_split_docs)
+                if added_ids:
+                     added_ids_combined.update(added_ids)
+                print(f" Added {len(added_ids)} IDs to {store.__class__.__name__}.")
+            except Exception as e:
+                print(f"Error adding documents to {store.__class__.__name__}: {e}")
 
-        return doc.id
+        print(f"Document addition process complete. Added IDs: {list(added_ids_combined)}")
+        return list(added_ids_combined) # Return unique IDs across stores
 
     def remove_document(self, doc_id: str) -> None:
         """
-        Remove a document from the system
-        システムから文書を削除
+        Remove a document (and its chunks) from all managed stores.
+        管理対象のすべてのストアから文書（およびそのチャンク）を削除します。
+
+        Note: Assumes doc_id corresponds to the original document ID used during addition.
+              The stores need logic to find and remove associated chunks/entries.
+        注意: doc_idは追加時に使用された元の文書IDに対応すると仮定します。
+              ストアは関連するチャンク/エントリを見つけて削除するロジックが必要です。
 
         Args:
-            doc_id (str): Document ID / 文書ID
+            doc_id (str): ID of the original document to remove.
+                          削除する元の文書のID。
         """
-        if doc_id not in self.documents:
-            raise ValueError(f"Document not found: {doc_id}")
+        print(f"Removing document with ID: {doc_id} from all stores...")
+        for store in self.document_stores:
+            try:
+                print(f" Deleting from {store.__class__.__name__}...")
+                store.delete_document(doc_id)
+                print(f" Deletion attempt complete for {store.__class__.__name__}.")
+            except NotImplementedError:
+                 print(f" Warning: delete_document not implemented for {store.__class__.__name__}. Skipping.")
+            except Exception as e:
+                print(f"Error deleting document {doc_id} from {store.__class__.__name__}: {e}")
+        print(f"Document removal process complete for ID: {doc_id}")
 
-        doc = self.documents[doc_id]
-        chunk_ids = [f"{doc_id}_{i}" for i in range(len(doc.chunks))]
-
-        # Remove from vector store
-        self.chroma_client.delete(ids=chunk_ids)
-
-        # Remove from BM25 index
-        tokenized_chunks = [tokenize(chunk) for chunk in doc.chunks]
-        self.bm25_index = BM25([])  # Reset index
-        for doc_id, doc in self.documents.items():
-            if doc_id != doc_id:  # Skip the document being removed
-                tokenized_chunks = [tokenize(chunk) for chunk in doc.chunks]
-                self.bm25_index = BM25(tokenized_chunks)
-
-        # Remove from documents
-        del self.documents[doc_id]
-
-        # Persist state
-        self._persist_state()
-
-    def find_related_documents(
+    def search(
         self,
         query: str,
-        k: int = 5,
-        search_mode: str = "hybrid"
-    ) -> List[Document]:
+        top_k: int = 10,
+        filter: Optional[Dict[str, Any]] = None,
+        search_mode: Optional[str] = None
+    ) -> List[SearchResult]:
         """
-        Find documents related to a query
-        クエリに関連する文書を検索
+        Search for documents using the specified mode (hybrid, vector, keyword).
+        指定されたモード（ハイブリッド、ベクトル、キーワード）を使用して文書を検索します。
 
         Args:
-            query (str): Search query / 検索クエリ
-            k (int): Number of results to return / 返す結果の数
-            search_mode (str): Search mode ("hybrid", "vector", or "keyword") / 検索モード
+            query (str): The search query. / 検索クエリ。
+            top_k (int): The final number of documents to return.
+                         返す最終的なドキュメント数。
+            filter (Optional[Dict[str, Any]]): Metadata filter for the search.
+                                                 検索用のメタデータフィルター。
+            search_mode (Optional[str]): The search strategy: "hybrid", "vector", or "keyword".
+                                         If None, uses the value from the FINDERLEDGE_DEFAULT_SEARCH_MODE
+                                         environment variable, or defaults to "hybrid".
+                               検索戦略: "hybrid"、"vector"、または "keyword"。
+                               Noneの場合、環境変数 FINDERLEDGE_DEFAULT_SEARCH_MODE の値を使用するか、
+                               デフォルトで "hybrid" になります。
 
         Returns:
-            List[Document]: List of related documents / 関連文書のリスト
+            List[SearchResult]: A list of search results, including documents and scores.
+                                文書とスコアを含む、検索結果のリスト。
+
+        Raises:
+            ValueError: If an invalid search_mode is provided.
         """
-        if search_mode not in ["hybrid", "vector", "keyword"]:
-            raise ValueError("search_mode must be one of: hybrid, vector, keyword")
+        # Determine the search mode to use
+        mode_to_use = search_mode or os.getenv("FINDERLEDGE_DEFAULT_SEARCH_MODE", "hybrid")
 
-        # Get vector search results
-        if search_mode in ["hybrid", "vector"]:
-            query_embedding = self.embedding_model.embed_query(query)
-            vector_results = self.chroma_client.query(
-                query_embeddings=[query_embedding],
-                n_results=k
-            )
+        print(f"Performing search with mode: '{mode_to_use}', query: '{query}', top_k={top_k}, filter={filter}")
 
-        # Get keyword search results
-        if search_mode in ["hybrid", "keyword"]:
-            tokenized_query = tokenize(query)
-            keyword_results = self.bm25_index.get_scores(tokenized_query)
-            # Convert scores to document IDs
-            doc_scores = {}
-            for i, chunk in enumerate(self.bm25_index.corpus):
-                doc_id = chunk.get("doc_id")
-                if doc_id:
-                    doc_scores[doc_id] = max(doc_scores.get(doc_id, 0), keyword_results[i])
-            keyword_results = sorted(doc_scores.items(), key=lambda x: x[1], reverse=True)[:k]
-            keyword_results = [doc_id for doc_id, _ in keyword_results]
+        results: List[SearchResult] = []
+        search_kwargs = {"k": top_k, "filter": filter}
 
-        # Combine results
-        doc_ids = set()
-        if search_mode in ["hybrid", "vector"]:
-            for metadata in vector_results["metadatas"][0]:
-                doc_ids.add(metadata["doc_id"])
-        if search_mode in ["hybrid", "keyword"]:
-            for doc_id in keyword_results:
-                doc_ids.add(doc_id)
+        if mode_to_use == "hybrid":
+            results = self.rrf_finder.search(query=query, top_k=top_k, filter=filter)
+        elif mode_to_use == "vector":
+            # Use only the vector retriever
+            try:
+                # Attempt to pass k and filter directly if retriever supports it via invoke or get_relevant_documents
+                # Note: filter support depends heavily on the underlying vector store (e.g., Chroma)
+                vector_docs = self.vector_retriever.get_relevant_documents(query, k=top_k, filter=filter)
+                # Map to SearchResult, use rank as score proxy
+                results = [
+                    SearchResult(document=doc, score=1.0/(rank + 1))
+                    for rank, doc in enumerate(vector_docs)
+                ]
+            except TypeError:
+                 # Fallback if k/filter cannot be passed directly to get_relevant_documents
+                 print(f"Warning: Vector retriever might not support direct k/filter passing. Retrieving with default settings and applying limits/filters post-retrieval might be needed for full support.")
+                 vector_docs = self.vector_retriever.get_relevant_documents(query)
+                 # Simple post-retrieval limit (filtering would need manual implementation here)
+                 results = [
+                     SearchResult(document=doc, score=1.0/(rank + 1))
+                     for rank, doc in enumerate(vector_docs[:top_k])
+                 ]
+            except Exception as e:
+                print(f"Error during vector search: {e}")
+                results = []
+        elif mode_to_use == "keyword":
+            # Use only the BM25s retriever
+            try:
+                # BM25sRetriever retrieves docs with bm25_score in metadata
+                bm25_docs = self.bm25_retriever.get_relevant_documents(query, k=top_k, filter=filter)
+                 # Map to SearchResult, extracting score
+                results = [
+                    SearchResult(document=doc, score=doc.metadata.get('bm25_score', 0.0))
+                    for doc in bm25_docs
+                ]
+                 # Ensure results are sorted by score (BM25s retriever should return sorted, but double-check)
+                results.sort(key=lambda x: x.score, reverse=True)
+            except TypeError:
+                print(f"Warning: BM25s retriever might not support direct k/filter passing. Retrieving with default settings and applying limits/filters post-retrieval might be needed for full support.")
+                bm25_docs = self.bm25_retriever.get_relevant_documents(query)
+                results = [
+                    SearchResult(document=doc, score=doc.metadata.get('bm25_score', 0.0))
+                    for doc in bm25_docs
+                ]
+                results.sort(key=lambda x: x.score, reverse=True)
+                results = results[:top_k] # Apply top_k limit
+            except Exception as e:
+                print(f"Error during keyword search: {e}")
+                results = []
+        else:
+            raise ValueError(f"Invalid search_mode: '{mode_to_use}'. Must be 'hybrid', 'vector', or 'keyword'.")
 
-        # Get documents
-        return [self.documents[doc_id] for doc_id in doc_ids]
+        print(f"Search returned {len(results)} results for mode '{mode_to_use}'.")
+        return results
 
     def get_context(
         self,
         query: str,
-        k: int = 5,
-        search_mode: str = "hybrid"
+        top_k: int = 5,
+        search_mode: Optional[str] = None,
+        filter: Optional[Dict[str, Any]] = None
     ) -> str:
         """
-        Get context for a query
-        クエリのコンテキストを取得
+        Get combined context string from the top search results for a query.
+        クエリに対する上位の検索結果から結合されたコンテキスト文字列を取得します。
 
         Args:
             query (str): Query to get context for / コンテキストを取得するクエリ
-            k (int): Number of documents to include / 含める文書の数
-            search_mode (str): Search mode to use / 使用する検索モード
+            top_k (int): Number of top documents to include in the context / コンテキストに含める上位文書の数
+            search_mode (Optional[str]): The search mode to use ("hybrid", "vector", "keyword").
+                                         If None, uses the value from the FINDERLEDGE_DEFAULT_SEARCH_MODE
+                                         environment variable, or defaults to "hybrid".
+                               使用する検索モード。Noneの場合、環境変数 FINDERLEDGE_DEFAULT_SEARCH_MODE
+                               の値を使用するか、デフォルトで "hybrid" になります。
+            filter (Optional[Dict[str, Any]]): Optional filter for the search.
+                                                検索用のオプションフィルター。
 
         Returns:
-            str: Combined context from related documents / 関連文書からの結合されたコンテキスト
+            str: Combined context string from the page content of the top documents.
+                 上位文書のページ内容から結合されたコンテキスト文字列。
         """
-        related_docs = self.find_related_documents(query, k, search_mode)
-        return "\n\n".join(doc.content for doc in related_docs)
+        # Determine the search mode to use
+        mode_to_use = search_mode or os.getenv("FINDERLEDGE_DEFAULT_SEARCH_MODE", "hybrid")
 
-    def _persist_state(self) -> None:
-        """
-        Persist the current state to disk
-        現在の状態をディスクに永続化
-        """
-        # Save documents
-        docs_file = self.persist_dir / "documents.json"
-        with open(docs_file, "w", encoding="utf-8") as f:
-            json.dump(
-                {doc_id: doc.model_dump() for doc_id, doc in self.documents.items()},
-                f,
-                ensure_ascii=False,
-                indent=2
-            )
+        print(f"Getting context for query: '{query}', top_k={top_k}, mode='{mode_to_use}', filter={filter}")
+        # Use the updated search method, passing the determined mode
+        search_results = self.search(query=query, top_k=top_k, filter=filter, search_mode=mode_to_use)
 
-        # Save BM25 index
-        bm25_file = self.persist_dir / "bm25.json"
-        with open(bm25_file, "w", encoding="utf-8") as f:
-            json.dump({
-                "corpus": self.bm25_index.corpus,
-                "doc_freqs": self.bm25_index.doc_freqs,
-                "doc_lens": self.bm25_index.doc_lens,
-                "avg_doc_len": self.bm25_index.avg_doc_len,
-                "k1": self.bm25_index.k1,
-                "b": self.bm25_index.b
-            }, f, ensure_ascii=False, indent=2)
+        if not search_results:
+            return ""
 
-    def _load_state(self) -> None:
-        """
-        Load persisted state from disk
-        ディスクから永続化された状態を読み込む
-        """
-        # Load documents
-        docs_file = self.persist_dir / "documents.json"
-        if docs_file.exists():
-            with open(docs_file, "r", encoding="utf-8") as f:
-                docs_data = json.load(f)
-                self.documents = {
-                    doc_id: Document(**doc_data)
-                    for doc_id, doc_data in docs_data.items()
-                }
+        # Combine page content from the results
+        context = "\n\n---\n\n".join(res.document.page_content for res in search_results)
+        return context
 
-        # Load BM25 index
-        bm25_file = self.persist_dir / "bm25.json"
-        if bm25_file.exists():
-            with open(bm25_file, "r", encoding="utf-8") as f:
-                bm25_data = json.load(f)
-                self.bm25_index = BM25(
-                    corpus=bm25_data["corpus"],
-                    doc_freqs=bm25_data["doc_freqs"],
-                    doc_lens=bm25_data["doc_lens"],
-                    avg_doc_len=bm25_data["avg_doc_len"],
-                    k1=bm25_data["k1"],
-                    b=bm25_data["b"]
-                )
-
-    def close(self) -> None:
-        """
-        Close the FinderLedge system and clean up resources
-        FinderLedgeシステムを閉じてリソースをクリーンアップ
-        """
-        # Close ChromaDB client
-        self.chroma_client.close()
-        
-        # Remove ChromaDB directory
-        chroma_dir = self.persist_dir / "chroma"
-        if chroma_dir.exists():
-            shutil.rmtree(chroma_dir)
-
-    def get_langchain_retriever(self) -> Any:
-        """
-        Get a LangChain retriever interface
-        LangChainのretrieverインターフェースを取得
-
-        Returns:
-            Any: LangChain retriever interface / LangChainのretrieverインターフェース
-        """
-        from langchain.retrievers import ChromaRetriever
-
-        class FinderLedgeRetriever(ChromaRetriever):
-            """
-            FinderLedge retriever for LangChain
-            LangChain用のFinderLedgeリトリーバー
-            """
-            def __init__(self, finder: "FinderLedge"):
-                """
-                Initialize retriever
-                リトリーバーを初期化
-
-                Args:
-                    finder (FinderLedge): FinderLedge instance / FinderLedgeインスタンス
-                """
-                self.finder = finder
-
-            def get_relevant_documents(self, query: str) -> List[Any]:
-                """
-                Get relevant documents for a query
-                クエリに関連する文書を取得
-
-                Args:
-                    query (str): Search query / 検索クエリ
-
-                Returns:
-                    List[Any]: List of relevant documents / 関連文書のリスト
-                """
-                # Get related documents
-                related_docs = self.finder.find_related_documents(query)
-
-                # Convert to LangChain documents
-                from langchain.schema import Document
-                return [
-                    Document(
-                        page_content=doc.content,
-                        metadata={
-                            "id": doc.id,
-                            "title": doc.title,
-                            **doc.metadata
-                        }
-                    )
-                    for doc in related_docs
-                ]
-
-        return FinderLedgeRetriever(self) 
+    # Remove _persist_state and _load_state as stores handle their own persistence.
+    # Remove or comment out get_langchain_retriever as FinderLedge now *uses* retrievers.
+    # def get_langchain_retriever(self) -> Any:
+    #     ... 
