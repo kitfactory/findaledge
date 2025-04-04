@@ -1,129 +1,139 @@
-# Finderledge 🔍
+# FinderLedge 🧭✨
 
-A document search library using embeddings and BM25 for efficient and accurate document retrieval.
+**Effortlessly build powerful ensemble retrieval systems for your RAG applications!**
 
-埋め込みとBM25を使用した、効率的で正確な文書検索ライブラリ。
+FinderLedge simplifies the process of setting up and managing multiple document retrieval methods (like vector search and keyword search) and combining their results for more relevant and robust RAG context generation.
 
-## Features ✨
+[![PyPI version](https://badge.fury.io/py/finderledge.svg)](https://badge.fury.io/py/finderledge)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-- Document management with chunking support
-- Hybrid search using embeddings and BM25
-- Efficient storage and retrieval of document embeddings
-- Configurable tokenization and text processing
-- Easy-to-use API for document search
+---
 
-- チャンク分割をサポートした文書管理
-- 埋め込みとBM25を使用したハイブリッド検索
-- 効率的な文書埋め込みの保存と取得
-- 設定可能なトークン化とテキスト処理
-- 使いやすい文書検索API
+## 🤔 Why FinderLedge?
 
-## Installation 🚀
+Retrieval-Augmented Generation (RAG) often benefits from combining different search strategies:
 
-### Prerequisites
+*   **Vector Search:** Great for semantic similarity (finding documents with similar *meaning*).
+*   **Keyword Search (like BM25):** Excels at finding documents containing specific terms or phrases.
 
-- Python 3.8 or higher
-- uv (fast Python package installer)
+Setting up multiple retrievers, managing their indices, and combining (reciprocal rank fusion - RRF) their results can be tedious and complex. 😩
 
-### Install uv
+**FinderLedge makes it super simple!** ✨ It automatically configures vector stores (like Chroma or FAISS) and keyword stores (BM25) for you. Just add your documents, and perform powerful hybrid searches with a single command. Focus on your application, not the retrieval plumbing! 🚀
+
+## 🚀 Features
+
+*   **Easy Initialization:** Get started with sensible defaults (Chroma + BM25) in one line.
+*   **Flexible Configuration:** Easily swap vector stores (Chroma, FAISS), keyword stores (BM25), embedding models (OpenAI, Ollama, etc.), and persistence paths.
+*   **Simple Document Loading:** Add documents from files or entire directories with automatic file type detection and parsing (powered by LangChain document loaders).
+*   **Built-in Splitting:** Automatically splits documents into appropriate chunks based on content type.
+*   **Hybrid Search (RRF):** Performs vector and keyword searches simultaneously and intelligently combines results using Reciprocal Rank Fusion (RRF) by default.
+*   **Pure Search Modes:** Option to use only vector search or only keyword search.
+*   **LangChain Integration:** Built on top of popular LangChain components.
+
+## 🛠️ Installation
 
 ```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
+# Using pip
+pip install finderledge
+
+# Or using uv
+uv pip install finderledge
+
+# Install optional dependencies for specific features (e.g., OpenAI embeddings)
+pip install finderledge[openai]
+# or
+uv pip install finderledge[openai]
 ```
 
-### Install Finderledge
-
-```bash
-# Clone the repository
-git clone https://github.com/yourusername/finderledge.git
-cd finderledge
-
-# Create and activate virtual environment
-uv venv
-. .venv/bin/activate  # On Windows: .venv\Scripts\activate
-
-# Install the package with development dependencies
-uv pip install -e ".[dev]"
-```
-
-## Quick Start 🎯
+## 💻 Basic Usage
 
 ```python
-from finderledge import Document, DocumentStore, EmbeddingStore, EmbeddingModel, Tokenizer, BM25, Finder
+from finderledge import FinderLedge
+import os
 
-# Initialize components
-document_store = DocumentStore("documents")
-embedding_store = EmbeddingStore("embeddings")
-embedding_model = EmbeddingModel()
-tokenizer = Tokenizer()
-bm25 = BM25()
+# --- Configuration (Optional: Set environment variables) ---
+# os.environ["OPENAI_API_KEY"] = "your-openai-api-key"
+# os.environ["FINDERLEDGE_PERSIST_DIRECTORY"] = "./my_data_store"
+# os.environ["FINDERLEDGE_VECTOR_STORE"] = "faiss" # Example: Use FAISS instead of Chroma
+# os.environ["FINDERLEDGE_EMBEDDING_PROVIDER"] = "openai"
 
-# Create finder
-finder = Finder(
-    document_store=document_store,
-    embedding_store=embedding_store,
-    embedding_model=embedding_model,
-    tokenizer=tokenizer,
-    bm25=bm25
+# --- Initialization ---
+# Uses defaults or environment variables if set
+# Default: Chroma vector store, BM25 keyword store, SentenceTransformer embeddings
+print("Initializing FinderLedge...")
+ledge = FinderLedge()
+print("FinderLedge Initialized!")
+
+# --- Add Documents --- 
+# Create dummy files for the example
+docs_dir = "example_docs"
+os.makedirs(docs_dir, exist_ok=True)
+with open(os.path.join(docs_dir, "doc1.txt"), "w") as f:
+    f.write("This is the content of the first document about apples.")
+with open(os.path.join(docs_dir, "doc2.md"), "w") as f:
+    f.write("# Oranges\nOranges are a citrus fruit.")
+
+print(f"Adding documents from {docs_dir}...")
+# Add a single file
+# ledge.add_document(os.path.join(docs_dir, "doc1.txt")) 
+# Add all supported files in a directory (recursive by default)
+ledge.add_document(docs_dir)
+print("Documents added!")
+
+# --- Search --- 
+query = "Tell me about fruit"
+print(f"\nSearching for: '{query}'")
+# Performs hybrid search (vector + keyword + RRF) by default
+results = ledge.search(query, top_k=3)
+
+print("\nSearch Results:")
+if results:
+    for i, doc in enumerate(results):
+        print(f"--- Result {i+1} ---")
+        print(f"  Score: {doc.metadata.get('relevance_score', 'N/A'):.4f}") # RRF Score
+        print(f"  Source: {doc.metadata.get('source', 'N/A')}")
+        # Displaying parent doc content if split, otherwise the content itself
+        parent_content = doc.metadata.get("parent_content", doc.page_content) 
+        print(f"  Content: {parent_content[:150]}...") # Show limited content
+else:
+    print("No results found.")
+
+# --- Clean up dummy files (optional) ---
+# import shutil
+# shutil.rmtree(docs_dir)
+
+```
+
+## ⚙️ Advanced Configuration
+
+You can configure FinderLedge extensively via environment variables or directly during initialization:
+
+```python
+# Example: Initialize with FAISS vector store and OpenAI embeddings
+ledge_advanced = FinderLedge(
+    vector_store_provider="faiss",        # Use FAISS
+    keyword_store_provider="bm25",        # Keep BM25
+    embedding_provider="openai",          # Use OpenAI for embeddings
+    embedding_model_name="text-embedding-3-small", # Specify model
+    persist_directory="./my_faiss_store" # Custom persistence path
+    # chunk_size=500,                    # Optional: Custom chunk size
+    # chunk_overlap=50                    # Optional: Custom chunk overlap
 )
 
-# Add document
-doc = Document(
-    id="doc1",
-    title="Sample Document",
-    content="This is a sample document for testing.",
-    metadata={"author": "John Doe"}
-)
-finder.add_document(doc)
-
-# Search documents
-results = finder.search("sample document", top_k=5)
-for doc, score in results:
-    print(f"Document: {doc.title}, Score: {score}")
+# Search using only vector mode
+results_vector = ledge_advanced.search(query, search_mode="vector", top_k=2)
 ```
 
-## Documentation 📚
+See the `FinderLedge` class documentation for all available options.
 
-For detailed documentation, please visit our [documentation page](https://finderledge.readthedocs.io/).
+## 🌍 Supported Environment
 
-詳細なドキュメントについては、[ドキュメントページ](https://finderledge.readthedocs.io/)をご覧ください。
+*   🐍 Python 3.10+
 
-## Development 🛠️
+## 🙏 Contributing
 
-### Running Tests
+Contributions are welcome! Please feel free to submit issues or pull requests.
 
-```bash
-pytest
-```
+## 📜 License
 
-### Code Style
-
-```bash
-# Format code
-black .
-isort .
-
-# Type checking
-mypy .
-
-# Linting
-flake8
-```
-
-## Contributing 🤝
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-貢献を歓迎します！プルリクエストをお気軽に送信してください。
-
-## License 📄
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-このプロジェクトはMITライセンスの下でライセンスされています - 詳細については[LICENSE](LICENSE)ファイルをご覧ください。
-
-## Support 💬
-
-If you have any questions or need help, please open an issue or contact us at support@finderledge.com.
-
-ご質問やお困りの点がございましたら、issueを作成するか、support@finderledge.comまでご連絡ください。
+FinderLedge is licensed under the [MIT License](LICENSE).
