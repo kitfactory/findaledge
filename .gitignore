@@ -67,3 +67,7 @@ tests/temp/
 chroma_db/
 *_chroma/
 .chroma/
+
+# Test persistence directories
+test_chroma_persist/
+test_faiss_persist/
