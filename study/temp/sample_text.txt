@@ -1,8 +1,8 @@
-FinderLedge サンプルテキストファイル
+FindaLedge サンプルテキストファイル
 ===================================
 
 このファイルは、ドキュメントローダーサンプルのテスト用に作成されたサンプルテキストファイルです。
-FinderLedge ライブラリは、様々な文書形式を読み込み、検索可能なインデックスを作成することができます。
+FindaLedge ライブラリは、様々な文書形式を読み込み、検索可能なインデックスを作成することができます。
 
 主な機能:
 - テキストファイルの読み込み
@@ -17,11 +17,11 @@ FinderLedge ライブラリは、様々な文書形式を読み込み、検索�
 * データベース
 * インデックス作成
 
-FinderLedge Sample Text File
+FindaLedge Sample Text File
 ===================================
 
 This is a sample text file created for testing the document loader sample.
-The FinderLedge library can load various document formats and create searchable indices.
+The FindaLedge library can load various document formats and create searchable indices.
 
 Main features:
 - Loading text files

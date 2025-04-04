@@ -10,6 +10,9 @@ import os
 import sys
 import argparse
 from oneenv import load_dotenv
+import platform
+import subprocess
+from pathlib import Path
 
 # Import sample modules with individual error handling
 # サンプルモジュールを個別のエラーハンドリングでインポート
@@ -64,14 +67,111 @@ except ImportError:
     print("Warning: Could not import persistence_sample")
     print("警告: persistence_sampleをインポートできませんでした")
 
+# Add project root to sys.path
+project_root = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(project_root))
+
+def get_python_executable():
+    """
+    Get the path to the Python executable, prioritizing the virtual environment.
+    仮想環境を優先してPython実行ファイルのパスを取得します。
+    """
+    venv_python_windows = project_root / ".venv" / "Scripts" / "python.exe"
+    venv_python_unix = project_root / ".venv" / "bin" / "python"
+
+    if platform.system() == "Windows" and venv_python_windows.exists():
+        return str(venv_python_windows)
+    elif platform.system() != "Windows" and venv_python_unix.exists():
+        return str(venv_python_unix)
+    else:
+        # Fallback to the Python executable running this script
+        return sys.executable
+
+def run_script(script_name: str, python_exe: str):
+    """
+    Run a specified Python script using the given Python executable.
+    指定されたPython実行ファイルを使用して、指定されたPythonスクリプトを実行します。
+
+    Args:
+        script_name (str): The name of the script file (without path).
+                           スクリプトファイル名（パスなし）。
+        python_exe (str): The path to the Python executable to use.
+                          使用するPython実行ファイルへのパス。
+    """
+    script_path = project_root / "study" / script_name
+    if not script_path.exists():
+        print(f"Error: Script '{script_name}' not found at {script_path}")
+        print(f"エラー: スクリプト '{script_name}' が {script_path} に見つかりません")
+        return
+
+    print(f"\n--- Running {script_name} ---")
+    print(f"--- {script_name} を実行中 ---")
+    command = [python_exe, str(script_path)]
+    print(f"Executing command: {' '.join(command)}")
+    print(f"コマンドを実行中: {' '.join(command)}")
+
+    try:
+        # Use Popen for better control over output streaming if needed
+        # 必要に応じて出力ストリーミングをより細かく制御するためにPopenを使用
+        # Set environment variable to force UTF-8 encoding for output
+        # 出力のUTF-8エンコーディングを強制する環境変数を設定
+        env = os.environ.copy()
+        env["PYTHONIOENCODING"] = "utf-8"
+
+        process = subprocess.Popen(
+            command, 
+            stdout=subprocess.PIPE, 
+            stderr=subprocess.PIPE,
+            text=True, # Decode output as text using default encoding (or PYTHONIOENCODING)
+                      # デフォルトエンコーディング（またはPYTHONIOENCODING）を使用して出力をテキストとしてデコード
+            # encoding='utf-8', # Explicitly set encoding if text=True doesn't work reliably
+                               # text=Trueが信頼できない場合は、明示的にエンコーディングを設定
+            env=env,
+            bufsize=1, # Line buffered
+                       # 行バッファリング
+            universal_newlines=True # Ensure cross-platform newline handling
+                                     # クロスプラットフォームの改行処理を保証
+        )
+
+        # Stream stdout
+        print("\nOutput:")
+        if process.stdout:
+            for line in process.stdout:
+                print(line, end='')
+
+        # Wait for the process to finish and capture stderr
+        # プロセスの終了を待ち、stderrをキャプチャ
+        stderr_output = ""
+        if process.stderr:
+            stderr_output = process.stderr.read()
+        
+        process.wait()
+
+        if process.returncode != 0:
+            print(f"\n--- Error running {script_name} (Exit Code: {process.returncode}) ---")
+            print(f"--- {script_name} の実行中にエラーが発生しました (終了コード: {process.returncode}) ---")
+            if stderr_output:
+                print("\nStandard Error:")
+                print(stderr_output)
+        else:
+            print(f"\n--- {script_name} finished successfully ---")
+            print(f"--- {script_name} は正常に終了しました ---")
+
+    except FileNotFoundError:
+        print(f"Error: Python executable '{python_exe}' not found.")
+        print(f"エラー: Python実行ファイル '{python_exe}' が見つかりません。")
+    except Exception as e:
+        print(f"An unexpected error occurred while running {script_name}: {e}")
+        print(f"{script_name} の実行中に予期せぬエラーが発生しました: {e}")
+
 def print_header():
     """
     Print a header for the tool
     ツールのヘッダーを表示
     """
     print("\n" + "=" * 60)
-    print("  FinderLedge Sample Runner")
-    print("  FinderLedge サンプル実行ツール")
+    print("  FindaLedge Sample Runner")
+    print("  FindaLedge サンプル実行ツール")
     print("=" * 60)
 
 def list_samples():
@@ -207,18 +307,18 @@ def main():
     Main function to run the sample runner tool
     サンプル実行ツールを実行するメイン関数
     """
-    parser = argparse.ArgumentParser(description="Run FinderLedge sample scripts")
-    parser.add_argument("sample_id", nargs="?", type=str,
-                      help="ID of the sample to run (if not provided, runs in interactive mode)")
+    parser = argparse.ArgumentParser(description="Run FindaLedge sample scripts")
+    parser.add_argument("script_number", nargs="?", type=str,
+                      help="The number of the sample script to run. If not provided, shows the list.")
     
     args = parser.parse_args()
     
-    if args.sample_id:
+    if args.script_number:
         # Run the specified sample
         # 指定されたサンプルを実行
         print_header()
         samples = list_samples()
-        run_sample(args.sample_id, samples)
+        run_script(samples[args.script_number]["function"].__name__ + ".py", get_python_executable())
     else:
         # Run in interactive mode
         # 対話モードで実行
