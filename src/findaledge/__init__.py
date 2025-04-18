@@ -22,6 +22,7 @@ from .tokenizer import Tokenizer
 from .document_splitter import DocumentSplitter, DocumentType
 from .document_store.vector_document_store import VectorDocumentStore
 from .embeddings_factory import EmbeddingModelFactory
+from .findaledge import FindaLedge # Import FindaLedge
 
 # 新しく追加した BM25sStore もインポートする (必要であれば)
 from .document_store.bm25s import BM25sStore
@@ -45,4 +46,5 @@ __all__ = [
     "DocumentSplitter",
     "DocumentType",
     "BM25sStore", # 新しく追加したクラスを __all__ に追加 (必要であれば)
+    "FindaLedge", # Add FindaLedge to __all__
 ] 

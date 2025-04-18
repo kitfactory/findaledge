@@ -19,12 +19,15 @@ from langchain_community.document_loaders import (
 from langchain.schema import Document as LangchainDocument # エイリアスを使用
 import os
 import markitdown # markitdown をインポート
+import logging # Import logging
 
 from .text_splitter import TextSplitter
 # from .document import Document # <-- 削除
 
 # markitdown のクラス名をインポート
 from markitdown import MarkItDown
+
+logger = logging.getLogger(__name__) # Initialize logger
 
 class DocumentLoader:
     """
@@ -87,49 +90,82 @@ class DocumentLoader:
 
     def _load_single_file(self, file_path: Path) -> Optional[LangchainDocument]:
         """
-        Loads a single file, handling code files as text and others via markitdown.
-        単一ファイルをロードします。コードファイルはテキストとして、
-        その他は markitdown 経由で処理します。
+        Loads a single file, handling code files first, then markitdown.
+        単一のファイルをロードします。まずコードファイルを処理し、次にmarkitdownを使用します。
 
         Args:
-            file_path (Path): Path to the file. / ファイルへのパス。
+            file_path (Path): The path to the file.
+                              ファイルへのパス。
 
         Returns:
-            Optional[LangchainDocument]: Loaded document or None if loading failed or skipped.
-                                        ロードされたドキュメント、失敗またはスキップされた場合はNone。
+            Optional[LangchainDocument]: The loaded document, or None if loading fails or the file type is unsupported.
+                                         ロードされたドキュメント。ロードに失敗した場合やファイルタイプがサポートされていない場合はNone。
         """
-        file_suffix = file_path.suffix.lower()
-        # Handle files without extension (like Dockerfile) by checking name
-        file_name = file_path.name
+        try:
+            file_suffix = file_path.suffix.lower()
+            file_name = file_path.name # For extensionless files like Dockerfile
+            logger.debug(f"Attempting to load file: {file_path} with suffix: '{file_suffix}', name: '{file_name}'")
 
-        metadata = {"source": str(file_path)}
+            # 1. Check for Code Files first (including common extensionless names)
+            if file_suffix in self.CODE_EXTENSIONS or file_name in self.CODE_EXTENSIONS:
+                try:
+                    logger.debug(f"Loading code file as text: {file_path}")
+                    with open(file_path, "r", encoding="utf-8") as f:
+                        content = f.read()
+                    logger.debug(f"Successfully loaded code file as text: {file_path}")
+                    return LangchainDocument(page_content=content, metadata={"source": str(file_path)})
+                except UnicodeDecodeError:
+                    # Ensure this block *only* logs and returns None
+                    logger.warning(f"UTF-8 decoding failed for code file {file_path}. Skipping.")
+                    print(f"[WARN] UTF-8 decoding failed for code file {file_path}. Skipping.")
+                    return None # Explicitly return None here
+                except Exception as e:
+                    logger.error(f"Failed to read code file {file_path} as text: {e}", exc_info=True)
+                    print(f"[ERROR] Failed to read code file {file_path} as text: {e}")
+                    return None
 
-        # 1. Check for Code Files (including extensionless common names)
-        if file_suffix in self.CODE_EXTENSIONS or file_name in self.CODE_EXTENSIONS:
-            try:
-                with open(file_path, "r", encoding="utf-8") as f:
-                    content = f.read()
-                return LangchainDocument(page_content=content, metadata=metadata)
-            except Exception as e:
-                print(f"Error reading code file {file_path} as text: {e}")
-                return None # Or try other encodings if needed
+            # 2. If not a code file, check if supported by Markitdown
+            elif file_suffix in self.SUPPORTED_EXTENSIONS:
+                try:
+                    # Try reading with UTF-8 first to catch explicit decode errors
+                    # before passing to markitdown, especially for text-based formats like .txt
+                    # Markitdown might handle some errors internally, but this gives us explicit control.
+                    try:
+                        with open(file_path, "r", encoding="utf-8") as f:
+                            f.read() # Attempt to read the whole file
+                    except UnicodeDecodeError:
+                         logger.warning(f"UTF-8 decoding failed for potential markitdown file {file_path}. Skipping.")
+                         print(f"[WARN] UTF-8 decoding failed for file {file_path}. Skipping.")
+                         return None # Skip if direct UTF-8 read fails
 
-        # 2. Check for Markitdown Supported Files
-        elif file_suffix in self.SUPPORTED_EXTENSIONS:
-            try:
-                # MarkItDownインスタンスの convert メソッドを使用
-                result = self.md_converter.convert(str(file_path))
-                markdown_content = result.text_content
-                # result.metadata から他のメタデータを取得して追加することも可能
-                # metadata.update(result.metadata)
-                return LangchainDocument(page_content=markdown_content, metadata=metadata)
-            except Exception as e:
-                print(f"Error loading file {file_path} with markitdown: {e}")
+                    logger.debug(f"Using markitdown loader for {file_path}")
+                    # Use convert() method
+                    result = self.md_converter.convert(str(file_path))
+                    if result is None or not hasattr(result, 'text_content'):
+                        logger.warning(f"Markitdown returned None or invalid result for: {file_path}")
+                        return None
+                    content = result.text_content
+                    metadata = result.metadata if hasattr(result, 'metadata') and result.metadata else {}
+                    metadata["source"] = str(file_path)
+                    logger.debug(f"Successfully loaded with markitdown: {file_path}")
+                    return LangchainDocument(page_content=content, metadata=metadata)
+                except Exception as e:
+                    logger.error(f"Markitdown failed to load {file_path}: {e}", exc_info=True)
+                    print(f"[ERROR] Markitdown failed to load {file_path}: {e}")
+                    return None
+
+            # 3. If neither code nor markitdown supported
+            else:
+                logger.warning(f"Skipping unsupported file type (not code and not markitdown): {file_path}")
+                print(f"Skipping unsupported file type: {file_path}")
                 return None
 
-        # 3. Unsupported File Type
-        else:
-            print(f"Skipping unsupported file type: {file_path}")
+        except FileNotFoundError:
+            logger.error(f"File not found: {file_path}")
+            raise
+        except Exception as e:
+            logger.error(f"Generic failure loading document {file_path}: {e}", exc_info=True)
+            print(f"[ERROR] Failed to load document {file_path}: {e}")
             return None
 
     def load_file(self, file_path: Union[str, Path]) -> Optional[LangchainDocument]:
