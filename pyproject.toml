@@ -56,6 +56,9 @@ dev = [
     "flake8>=6.0.0",
 ]
 
+[project.dependencies]
+langchain-chroma = ">=0.2.3"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
