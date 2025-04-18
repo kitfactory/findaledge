@@ -35,6 +35,7 @@ dependencies = [
     "numpy>=2.1.0",
     "oneenv>=0.1.6",
     "openai>=1.0.0",
+    "langchain-chroma>=0.2.3",
 ]
 
 [project.urls]
@@ -55,9 +56,6 @@ dev = [
     "mypy>=1.5.0",
     "flake8>=6.0.0",
 ]
-
-[project.dependencies]
-langchain-chroma = ">=0.2.3"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
