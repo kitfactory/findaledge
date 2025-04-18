@@ -103,4 +103,5 @@ omit = [
 ]
 
 [tool.hatch.build]
-packages = ["src/findaledge"]
+package-dir = { findaledge = "src/findaledge" }
+packages = ["findaledge"]
